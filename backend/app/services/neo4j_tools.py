@@ -10,6 +10,7 @@ Neo4j 检索工具服务
 """
 
 import json
+import re
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass, field
 
@@ -20,6 +21,40 @@ from ..utils.locale import get_locale, t
 from ..utils.neo4j_graph_utils import get_neo4j_graph_client, run_async, fetch_all_nodes, fetch_all_edges
 
 logger = get_logger('mirofish.neo4j_tools')
+
+
+def _search_terms(query: str) -> List[str]:
+    query = (query or "").lower()
+    terms = [
+        part
+        for part in re.split(r"[\s,，。；;：:、/\\|（）()《》<>\"'“”‘’！？!?]+", query)
+        if len(part) > 1
+    ]
+    chinese_chunks = re.findall(r"[\u4e00-\u9fff]+", query)
+    for chunk in chinese_chunks:
+        for size in (2, 3, 4):
+            terms.extend(chunk[idx:idx + size] for idx in range(0, max(len(chunk) - size + 1, 0)))
+    terms.extend(re.findall(r"[a-zA-Z0-9_]{2,}", query))
+    seen = set()
+    return [term for term in terms if not (term in seen or seen.add(term))]
+
+
+def _match_score(query: str, keywords: List[str], text: str) -> int:
+    if not text:
+        return 0
+    tl = text.lower()
+    score = 100 if query and query in tl else 0
+    for kw in keywords:
+        if kw in tl:
+            score += 10 + min(len(kw), 8)
+    return score
+
+
+def _edge_fact_text(edge: "EdgeInfo") -> str:
+    source = edge.source_node_name or edge.source_node_uuid[:8]
+    target = edge.target_node_name or edge.target_node_uuid[:8]
+    fact = edge.fact or f"{source} --{edge.name}--> {target}"
+    return f"{source} --[{edge.name}]--> {target}: {fact}"
 
 
 # ─── 数据类（与原版完全兼容）────────────────────────────────────────────────
@@ -326,15 +361,25 @@ class Neo4jToolsService:
             seen = set()
             for edge in results:
                 fact = getattr(edge, 'fact', '') or ''
-                if fact and fact not in seen:
-                    facts.append(fact)
-                    seen.add(fact)
+                source_name = getattr(edge, 'source_node_name', '') or ''
+                target_name = getattr(edge, 'target_node_name', '') or ''
+                fact_text = (
+                    f"{source_name or getattr(edge, 'source_node_uuid', '')[:8]} "
+                    f"--[{getattr(edge, 'name', '') or ''}]--> "
+                    f"{target_name or getattr(edge, 'target_node_uuid', '')[:8]}: "
+                    f"{fact}"
+                )
+                if fact_text and fact_text not in seen:
+                    facts.append(fact_text)
+                    seen.add(fact_text)
                 edges.append({
                     "uuid": str(getattr(edge, 'uuid', '') or ''),
                     "name": getattr(edge, 'name', '') or '',
                     "fact": fact,
                     "source_node_uuid": str(getattr(edge, 'source_node_uuid', '') or ''),
                     "target_node_uuid": str(getattr(edge, 'target_node_uuid', '') or ''),
+                    "source_node_name": getattr(edge, 'source_node_name', '') or '',
+                    "target_node_name": getattr(edge, 'target_node_name', '') or '',
                 })
 
             logger.info(t("console.searchComplete", count=len(facts)))
@@ -355,34 +400,61 @@ class Neo4jToolsService:
         logger.info(t("console.usingLocalSearch", query=query[:30]))
 
         query_lower = query.lower()
-        keywords = [w.strip() for w in query_lower.replace(',', ' ').replace('，', ' ').split() if len(w.strip()) > 1]
-
-        def match_score(text: str) -> int:
-            if not text:
-                return 0
-            tl = text.lower()
-            if query_lower in tl:
-                return 100
-            return sum(10 for kw in keywords if kw in tl)
+        keywords = _search_terms(query)
 
         facts, edges_result, nodes_result = [], [], []
         try:
             if scope in ("edges", "both"):
                 all_edges = self.get_all_edges(graph_id)
                 scored = sorted(
-                    [(match_score(e.fact) + match_score(e.name), e) for e in all_edges if match_score(e.fact) + match_score(e.name) > 0],
+                    [
+                        (
+                            _match_score(
+                                query_lower,
+                                keywords,
+                                " ".join([
+                                    e.fact or "",
+                                    e.name or "",
+                                    e.source_node_name or "",
+                                    e.target_node_name or "",
+                                ]),
+                            ),
+                            e,
+                        )
+                        for e in all_edges
+                        if _match_score(
+                            query_lower,
+                            keywords,
+                            " ".join([
+                                e.fact or "",
+                                e.name or "",
+                                e.source_node_name or "",
+                                e.target_node_name or "",
+                            ]),
+                        ) > 0
+                    ],
                     key=lambda x: x[0], reverse=True
                 )
                 for _, edge in scored[:limit]:
-                    if edge.fact:
-                        facts.append(edge.fact)
-                    edges_result.append({"uuid": edge.uuid, "name": edge.name, "fact": edge.fact,
-                                         "source_node_uuid": edge.source_node_uuid, "target_node_uuid": edge.target_node_uuid})
+                    facts.append(_edge_fact_text(edge))
+                    edges_result.append({
+                        "uuid": edge.uuid,
+                        "name": edge.name,
+                        "fact": edge.fact,
+                        "source_node_uuid": edge.source_node_uuid,
+                        "target_node_uuid": edge.target_node_uuid,
+                        "source_node_name": edge.source_node_name,
+                        "target_node_name": edge.target_node_name,
+                    })
 
             if scope in ("nodes", "both"):
                 all_nodes = self.get_all_nodes(graph_id)
                 scored_n = sorted(
-                    [(match_score(n.name) + match_score(n.summary), n) for n in all_nodes if match_score(n.name) + match_score(n.summary) > 0],
+                    [
+                        (_match_score(query_lower, keywords, f"{n.name} {n.summary}"), n)
+                        for n in all_nodes
+                        if _match_score(query_lower, keywords, f"{n.name} {n.summary}") > 0
+                    ],
                     key=lambda x: x[0], reverse=True
                 )
                 for _, node in scored_n[:limit]:
@@ -419,6 +491,8 @@ class Neo4jToolsService:
                 uuid=e["uuid"], name=e["name"], fact=e["fact"],
                 source_node_uuid=e["source_node_uuid"],
                 target_node_uuid=e["target_node_uuid"],
+                source_node_name=e.get("source_node_name"),
+                target_node_name=e.get("target_node_name"),
             )
             if include_temporal:
                 ei.created_at = str(e["created_at"]) if e.get("created_at") else None

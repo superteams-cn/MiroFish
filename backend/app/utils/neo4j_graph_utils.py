@@ -9,8 +9,10 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import threading
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from typing import Any, Optional
 
 from neo4j import GraphDatabase
@@ -70,6 +72,29 @@ def _safe_label(label: str) -> str:
     return cleaned or "Entity"
 
 
+def _search_terms(query: str) -> list[str]:
+    query = (query or "").lower()
+    terms = [part for part in re.split(r"[\s,，。；;：:、/\\|（）()《》<>\"'“”‘’！？!?]+", query) if len(part) > 1]
+    chinese_chunks = re.findall(r"[\u4e00-\u9fff]+", query)
+    for chunk in chinese_chunks:
+        for size in (2, 3, 4):
+            terms.extend(chunk[idx:idx + size] for idx in range(0, max(len(chunk) - size + 1, 0)))
+    terms.extend(re.findall(r"[a-zA-Z0-9_]{2,}", query))
+    seen = set()
+    return [term for term in terms if not (term in seen or seen.add(term))]
+
+
+def _score_text(query: str, terms: list[str], text: str) -> int:
+    if not text:
+        return 0
+    haystack = text.lower()
+    score = 100 if query and query in haystack else 0
+    for term in terms:
+        if term in haystack:
+            score += 10 + min(len(term), 8)
+    return score
+
+
 class Neo4jGraphClient:
     """Small synchronous Neo4j client with the subset used by MiroFish."""
 
@@ -84,8 +109,67 @@ class Neo4jGraphClient:
     def close(self):
         self.driver.close()
 
-    def search(self, *args, **kwargs):
-        raise NotImplementedError("Semantic graph search is not implemented for the schema Neo4j backend.")
+    async def search(
+        self,
+        query: str,
+        group_ids: Optional[list[str]] = None,
+        num_results: int = 10,
+        **_: Any,
+    ) -> list[Any]:
+        group_ids = group_ids or []
+        query_lower = (query or "").lower()
+        terms = _search_terms(query)
+        if not terms and query_lower:
+            terms = [query_lower]
+
+        with self.driver.session() as session:
+            records = list(session.run(
+                """
+                MATCH (s:Entity)-[r:RELATES_TO]->(t:Entity)
+                WHERE size($group_ids) = 0 OR r.group_id IN $group_ids
+                RETURN r.uuid AS uuid,
+                       r.name AS name,
+                       r.fact AS fact,
+                       r.group_id AS group_id,
+                       s.uuid AS source_node_uuid,
+                       s.name AS source_node_name,
+                       s.summary AS source_summary,
+                       t.uuid AS target_node_uuid,
+                       t.name AS target_node_name,
+                       t.summary AS target_summary
+                """,
+                {"group_ids": group_ids},
+            ))
+
+        scored = []
+        for record in records:
+            searchable = " ".join(str(record.get(key) or "") for key in (
+                "name",
+                "fact",
+                "source_node_name",
+                "source_summary",
+                "target_node_name",
+                "target_summary",
+            ))
+            score = _score_text(query_lower, terms, searchable)
+            if score <= 0:
+                continue
+            scored.append((score, record))
+
+        scored.sort(key=lambda item: item[0], reverse=True)
+        return [
+            SimpleNamespace(
+                uuid=record.get("uuid") or "",
+                name=record.get("name") or "",
+                fact=record.get("fact") or "",
+                group_id=record.get("group_id") or "",
+                source_node_uuid=record.get("source_node_uuid") or "",
+                target_node_uuid=record.get("target_node_uuid") or "",
+                source_node_name=record.get("source_node_name") or "",
+                target_node_name=record.get("target_node_name") or "",
+            )
+            for _, record in scored[:num_results]
+        ]
 
     def build_indices_and_constraints(self):
         with self.driver.session() as session:
@@ -220,7 +304,9 @@ def fetch_all_edges(
                    r.valid_at AS valid_at,
                    r.invalid_at AS invalid_at,
                    r.expired_at AS expired_at,
-                   r.attributes_json AS attributes_json
+                   r.attributes_json AS attributes_json,
+                   s.name AS source_node_name,
+                   t.name AS target_node_name
             """,
             {"group_id": group_id},
         )
@@ -231,6 +317,8 @@ def fetch_all_edges(
                 "fact": record.get("fact") or "",
                 "source_node_uuid": record.get("source_node_uuid") or "",
                 "target_node_uuid": record.get("target_node_uuid") or "",
+                "source_node_name": record.get("source_node_name") or "",
+                "target_node_name": record.get("target_node_name") or "",
                 "created_at": record.get("created_at"),
                 "valid_at": record.get("valid_at"),
                 "invalid_at": record.get("invalid_at"),
