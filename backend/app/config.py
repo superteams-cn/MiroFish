@@ -36,8 +36,15 @@ class Config:
     # 设得过小会导致 JSON 输出被截断、解析失败。默认 16384 留足余量。
     ONTOLOGY_MAX_TOKENS = int(os.environ.get('ONTOLOGY_MAX_TOKENS', '16384'))
 
-    # Zep配置
-    ZEP_API_KEY = os.environ.get('ZEP_API_KEY')
+    # Neo4j / Graphiti 配置（自托管知识图谱）
+    NEO4J_URI = os.environ.get('NEO4J_URI', 'bolt://localhost:7687')
+    NEO4J_USER = os.environ.get('NEO4J_USER', 'neo4j')
+    NEO4J_PASSWORD = os.environ.get('NEO4J_PASSWORD', 'mirofish_neo4j')
+    # Graphiti 向量嵌入配置（DeepSeek 不提供 embedding API，需单独配置 OpenAI 兼容的 embedding 服务）
+    # 若未设置 GRAPHITI_EMBEDDING_BASE_URL，默认使用 OpenAI 官方 API
+    GRAPHITI_EMBEDDING_API_KEY = os.environ.get('GRAPHITI_EMBEDDING_API_KEY') or os.environ.get('LLM_API_KEY')
+    GRAPHITI_EMBEDDING_BASE_URL = os.environ.get('GRAPHITI_EMBEDDING_BASE_URL', 'https://api.openai.com/v1')
+    GRAPHITI_EMBEDDING_MODEL = os.environ.get('GRAPHITI_EMBEDDING_MODEL', 'text-embedding-3-small')
     
     # 文件上传配置
     MAX_CONTENT_LENGTH = 50 * 1024 * 1024  # 50MB
@@ -76,7 +83,7 @@ class Config:
         errors: list[str] = []
         if not cls.LLM_API_KEY:
             errors.append("LLM_API_KEY 未配置")
-        if not cls.ZEP_API_KEY:
-            errors.append("ZEP_API_KEY 未配置")
+        if not cls.NEO4J_URI:
+            errors.append("NEO4J_URI 未配置")
         return errors
 
