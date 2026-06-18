@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import threading
 from typing import Any
 
@@ -26,6 +27,41 @@ from graphiti_core.cross_encoder.openai_reranker_client import OpenAIRerankerCli
 from .logger import get_logger
 
 logger = get_logger('mirofish.graphiti_utils')
+
+
+# ── 兼容性补丁 ──────────────────────────────────────────────────────────────
+# DeepSeek 以 JSON 模式返回时，实体 attributes 可能包含嵌套 dict。
+# Neo4j 节点属性只支持基础类型（str/int/float/bool）及其数组，
+# 嵌套 Map 会触发 CypherTypeError。
+# 此补丁在写入前把嵌套 dict/list[dict] 序列化为 JSON 字符串。
+
+def _flatten_neo4j_attrs(attrs: dict) -> dict:
+    """将 dict 值/list[dict] 值序列化为 JSON 字符串，其余不变。"""
+    result = {}
+    for k, v in attrs.items():
+        if isinstance(v, dict):
+            result[k] = json.dumps(v, ensure_ascii=False)
+        elif isinstance(v, list) and any(isinstance(i, dict) for i in v):
+            result[k] = json.dumps(v, ensure_ascii=False)
+        else:
+            result[k] = v
+    return result
+
+
+def _apply_bulk_utils_patch() -> None:
+    """给 graphiti_core.utils.bulk_utils 打补丁，解决非结构化 LLM 的 Map 属性问题。"""
+    import graphiti_core.utils.bulk_utils as _bu
+
+    _orig = _bu.add_nodes_and_edges_bulk_tx
+
+    async def _patched(tx, episodic_nodes, episodic_edges, entity_nodes, entity_edges, embedder):
+        for node in entity_nodes:
+            if node.attributes:
+                node.attributes = _flatten_neo4j_attrs(node.attributes)
+        return await _orig(tx, episodic_nodes, episodic_edges, entity_nodes, entity_edges, embedder)
+
+    _bu.add_nodes_and_edges_bulk_tx = _patched
+    logger.debug("bulk_utils patch applied (nested-dict attributes → JSON strings)")
 
 _DEFAULT_MAX_NODES = 2000
 
@@ -114,6 +150,7 @@ def get_graphiti_client() -> Graphiti:
     if _graphiti_client is None:
         with _graphiti_client_lock:
             if _graphiti_client is None:
+                _apply_bulk_utils_patch()
                 logger.info("初始化 Graphiti 客户端...")
                 _graphiti_client = _create_graphiti_client()
                 run_async(_graphiti_client.build_indices_and_constraints())
