@@ -27,6 +27,12 @@ function formatSimId(id?: string) {
   if (!id) return 'SIM_UNKNOWN'
   return `SIM_${id.replace('sim_', '').slice(0, 6).toUpperCase()}`
 }
+// 卡片编号：有模拟显示 SIM_xxx，仅建图谱的项目显示 PROJ_xxx
+function cardId(p: HistoryProject) {
+  if (p.simulation_id) return formatSimId(p.simulation_id)
+  if (p.project_id) return `PROJ_${p.project_id.replace('proj_', '').slice(0, 6).toUpperCase()}`
+  return 'SIM_UNKNOWN'
+}
 function fileExt(name?: string) {
   return name?.split('.').pop()?.toUpperCase() || 'FILE'
 }
@@ -192,7 +198,7 @@ export function HistoryDatabase({ onHasProjects }: HistoryDatabaseProps = {}) {
 
           return (
             <div
-              key={p.simulation_id}
+              key={p.simulation_id || p.project_id}
               role="button"
               tabIndex={0}
               onClick={() => setSelected(p)}
@@ -234,13 +240,15 @@ export function HistoryDatabase({ onHasProjects }: HistoryDatabaseProps = {}) {
 
               <div className="mb-2 flex items-center justify-between">
                 <span className="text-muted-foreground group-hover:text-brand font-mono text-xs font-bold transition-colors">
-                  {formatSimId(p.simulation_id)}
+                  {cardId(p)}
                 </span>
                 <div className="flex gap-1 text-xs">
                   <span className={p.project_id ? 'text-brand' : 'text-muted-foreground/40'}>
                     ◇
                   </span>
-                  <span className="text-brand">◈</span>
+                  <span className={p.simulation_id ? 'text-brand' : 'text-muted-foreground/40'}>
+                    ◈
+                  </span>
                   <span className={p.report_id ? 'text-brand' : 'text-muted-foreground/40'}>◆</span>
                 </div>
               </div>
@@ -290,9 +298,7 @@ export function HistoryDatabase({ onHasProjects }: HistoryDatabaseProps = {}) {
           {selected && (
             <>
               <DialogHeader>
-                <DialogTitle className="font-mono text-sm">
-                  {formatSimId(selected.simulation_id)}
-                </DialogTitle>
+                <DialogTitle className="font-mono text-sm">{cardId(selected)}</DialogTitle>
               </DialogHeader>
               <div className="space-y-4">
                 <div>
@@ -377,7 +383,7 @@ export function HistoryDatabase({ onHasProjects }: HistoryDatabaseProps = {}) {
           <p className="text-muted-foreground text-sm">{t('history.deleteConfirmDesc')}</p>
           {pendingDelete && (
             <p className="bg-muted/50 truncate rounded-md px-3 py-2 font-mono text-xs">
-              {formatSimId(pendingDelete.simulation_id)} ·{' '}
+              {cardId(pendingDelete)} ·{' '}
               {truncate(pendingDelete.simulation_requirement, 28) ||
                 t('history.untitledSimulation')}
             </p>

@@ -698,6 +698,37 @@ def get_simulation_history(limit: int = 20):
 
             enriched_simulations.append(sim_dict)
 
+        # 合并「已建图谱但尚无模拟」的项目，使首页历史也能看到并续做这类项目
+        sim_project_ids = {s.project_id for s in simulations if s.project_id}
+        for project in ProjectManager.list_projects(limit=limit):
+            if project.project_id in sim_project_ids:
+                continue
+            files = getattr(project, "files", None) or []
+            created_at = getattr(project, "created_at", "") or ""
+            enriched_simulations.append(
+                {
+                    "project_id": project.project_id,
+                    "simulation_id": None,
+                    "report_id": None,
+                    "graph_id": project.graph_id,
+                    "name": project.name,
+                    "status": project.status,
+                    "simulation_requirement": project.simulation_requirement or "",
+                    "files": [{"filename": f.get("filename", "未知文件")} for f in files[:3]],
+                    "created_at": created_at,
+                    "created_date": created_at[:10],
+                    "current_round": 0,
+                    "total_rounds": 0,
+                    "total_simulation_hours": 0,
+                    "runner_status": "idle",
+                    "version": "v1.0.2",
+                }
+            )
+
+        # 按创建时间倒序，统一截断到 limit
+        enriched_simulations.sort(key=lambda x: x.get("created_at", "") or "", reverse=True)
+        enriched_simulations = enriched_simulations[:limit]
+
         return {"success": True, "data": enriched_simulations, "count": len(enriched_simulations)}
 
     except Exception as e:
