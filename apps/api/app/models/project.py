@@ -14,6 +14,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
+from ..config import Config
 from ..db import session_scope
 from ..db_models import ProjectRow
 from ..utils import object_store
@@ -53,8 +54,8 @@ class Project:
 
     # 配置
     simulation_requirement: str | None = None
-    chunk_size: int = 5000
-    chunk_overlap: int = 200
+    chunk_size: int = field(default_factory=lambda: Config.DEFAULT_CHUNK_SIZE)
+    chunk_overlap: int = field(default_factory=lambda: Config.DEFAULT_CHUNK_OVERLAP)
 
     # 错误信息
     error: str | None = None
@@ -99,8 +100,8 @@ class Project:
             graph_id=data.get("graph_id"),
             graph_build_task_id=data.get("graph_build_task_id"),
             simulation_requirement=data.get("simulation_requirement"),
-            chunk_size=data.get("chunk_size", 5000),
-            chunk_overlap=data.get("chunk_overlap", 200),
+            chunk_size=data.get("chunk_size", Config.DEFAULT_CHUNK_SIZE),
+            chunk_overlap=data.get("chunk_overlap", Config.DEFAULT_CHUNK_OVERLAP),
             error=data.get("error"),
         )
 

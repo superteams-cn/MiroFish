@@ -71,8 +71,10 @@ class Config:
     ALLOWED_EXTENSIONS = {"pdf", "md", "txt", "markdown"}
 
     # 文本处理配置（按大上下文模型调大，减少分块数与跨块实体分裂）
-    DEFAULT_CHUNK_SIZE = 5000  # 默认切块大小（字符）
-    DEFAULT_CHUNK_OVERLAP = 200  # 默认重叠大小（字符）
+    # 默认切块大小（字符）。大上下文模型(deepseek 32k+)可调大以减少分块数。
+    DEFAULT_CHUNK_SIZE = int(os.environ.get("DEFAULT_CHUNK_SIZE", "5000"))
+    # 默认重叠大小（字符）。
+    DEFAULT_CHUNK_OVERLAP = int(os.environ.get("DEFAULT_CHUNK_OVERLAP", "200"))
 
     # OASIS模拟配置
     OASIS_DEFAULT_MAX_ROUNDS = int(os.environ.get("OASIS_DEFAULT_MAX_ROUNDS", "10"))

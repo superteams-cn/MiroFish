@@ -10,6 +10,7 @@ from sqlalchemy import DateTime, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
+from .config import Config
 from .db import Base
 
 
@@ -35,8 +36,10 @@ class ProjectRow(Base):
     graph_build_task_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     simulation_requirement: Mapped[str | None] = mapped_column(Text, nullable=True)
-    chunk_size: Mapped[int] = mapped_column(Integer, default=5000)
-    chunk_overlap: Mapped[int] = mapped_column(Integer, default=200)
+    chunk_size: Mapped[int] = mapped_column(Integer, default=lambda: Config.DEFAULT_CHUNK_SIZE)
+    chunk_overlap: Mapped[int] = mapped_column(
+        Integer, default=lambda: Config.DEFAULT_CHUNK_OVERLAP
+    )
 
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
