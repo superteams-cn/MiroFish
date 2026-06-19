@@ -65,6 +65,7 @@ interface SimLink extends d3.SimulationLinkDatum<SimNode> {
   curvature: number
   isSelfLoop: boolean
   pairTotal: number
+  bidirectional: boolean
   raw: Record<string, unknown>
 }
 
@@ -199,12 +200,14 @@ export function GraphPanel({
 
     const pairCount: Record<string, number> = {}
     const selfLoops: Record<string, GraphEdge[]> = {}
+    const directed = new Set<string>() // 有向边集合，用于判定双向关系
     valid.forEach((e) => {
       if (e.source_node_uuid === e.target_node_uuid) {
         ;(selfLoops[e.source_node_uuid] ??= []).push(e)
       } else {
         const key = [e.source_node_uuid, e.target_node_uuid].sort().join('_')
         pairCount[key] = (pairCount[key] || 0) + 1
+        directed.add(`${e.source_node_uuid}>${e.target_node_uuid}`)
       }
     })
 
@@ -226,6 +229,7 @@ export function GraphPanel({
           curvature: 0,
           isSelfLoop: true,
           pairTotal: 1,
+          bidirectional: false,
           raw: {
             isSelfLoopGroup: true,
             source_name: name,
@@ -255,6 +259,7 @@ export function GraphPanel({
         curvature,
         isSelfLoop: false,
         pairTotal: total,
+        bidirectional: directed.has(`${e.target_node_uuid}>${e.source_node_uuid}`),
         raw: {
           ...e,
           source_name: e.source_node_name || nodeMap.get(e.source_node_uuid)?.name,
@@ -343,7 +348,8 @@ export function GraphPanel({
       .attr('stroke', EDGE_COLOR)
       .attr('stroke-opacity', 0.75)
       .attr('stroke-width', 1.4)
-      .attr('marker-end', 'url(#sf-arrow)')
+      // 双向关系(A→B 且 B→A)方向相互，不画箭头
+      .attr('marker-end', (d) => (d.bidirectional ? null : 'url(#sf-arrow)'))
       .style('cursor', 'pointer')
       .on('click', (event, d) => {
         event.stopPropagation()
@@ -351,7 +357,7 @@ export function GraphPanel({
         d3.select(event.currentTarget as SVGPathElement)
           .attr('stroke', EDGE_HL)
           .attr('stroke-width', 3)
-          .attr('marker-end', 'url(#sf-arrow-hl)')
+          .attr('marker-end', d.bidirectional ? null : 'url(#sf-arrow-hl)')
         setSelected({ kind: 'edge', data: d.raw })
       })
 
@@ -379,7 +385,7 @@ export function GraphPanel({
           .filter((l) => l === d)
           .attr('stroke', EDGE_HL)
           .attr('stroke-width', 3)
-          .attr('marker-end', 'url(#sf-arrow-hl)')
+          .attr('marker-end', d.bidirectional ? null : 'url(#sf-arrow-hl)')
         setSelected({ kind: 'edge', data: d.raw })
       })
     edgeLabelSelRef.current = edgeLabel
@@ -415,7 +421,10 @@ export function GraphPanel({
       .style('display', labelsVisible ? 'block' : 'none')
 
     function resetHighlight() {
-      link.attr('stroke', EDGE_COLOR).attr('stroke-width', 1.4).attr('marker-end', 'url(#sf-arrow)')
+      link
+        .attr('stroke', EDGE_COLOR)
+        .attr('stroke-width', 1.4)
+        .attr('marker-end', (d) => (d.bidirectional ? null : 'url(#sf-arrow)'))
       circle.attr('stroke', '#fff').attr('stroke-width', 2)
     }
 
@@ -431,7 +440,7 @@ export function GraphPanel({
           .filter((l) => (l.source as SimNode).id === d.id || (l.target as SimNode).id === d.id)
           .attr('stroke', EDGE_HL)
           .attr('stroke-width', 2.4)
-          .attr('marker-end', 'url(#sf-arrow-hl)')
+          .attr('marker-end', (l) => (l.bidirectional ? null : 'url(#sf-arrow-hl)'))
         setSelected({ kind: 'node', data: d.raw, entityType: d.type, color: colorOf(d.type) })
       })
       .on('mouseenter', (event) => {
@@ -491,8 +500,8 @@ export function GraphPanel({
         const r = NODE_R + 18
         return `M${sx + NODE_R * 0.6},${sy - 4} A${r},${r} 0 1,1 ${sx + NODE_R * 0.6},${sy + 4}`
       }
-      // 末端回缩到目标节点边缘，使箭头落在节点外沿而非被圆圈盖住
-      const gap = NODE_R + 5
+      // 有箭头(单向)时末端回缩到节点边缘，使箭头落在外沿；双向无箭头则画到中心
+      const gap = d.bidirectional ? 0 : NODE_R + 5
       if (d.curvature === 0) {
         const dx = tx - sx
         const dy = ty - sy
