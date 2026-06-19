@@ -32,14 +32,14 @@ export function StepCard({
     status === 'completed'
       ? 'bg-green-100 text-green-700'
       : status === 'processing'
-        ? 'bg-[#FF5722] text-white'
+        ? 'bg-brand text-white'
         : 'bg-muted text-muted-foreground'
 
   return (
     <div
       className={cn(
         'bg-card relative rounded-lg border p-5 shadow-sm transition',
-        active && 'border-[#FF5722] shadow-md',
+        active && 'border-brand shadow-md',
       )}
     >
       <div className="mb-4 flex items-center justify-between">

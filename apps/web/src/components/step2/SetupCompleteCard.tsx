@@ -96,7 +96,7 @@ export function SetupCompleteCard({
               </span>
               <button
                 onClick={() => setUseCustomRounds(true)}
-                className="ml-auto text-[11px] text-[#FF5722] hover:underline"
+                className="text-brand ml-auto text-[11px] hover:underline"
               >
                 {t('step2.customTip')} ➝
               </button>

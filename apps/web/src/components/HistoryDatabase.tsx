@@ -104,20 +104,16 @@ export function HistoryDatabase() {
           <button
             key={p.simulation_id}
             onClick={() => setSelected(p)}
-            className="bg-card rounded-lg border p-4 text-left transition hover:border-[#FF5722] hover:shadow-md"
+            className="bg-card hover:border-brand rounded-lg border p-4 text-left transition hover:shadow-md"
           >
             <div className="mb-2 flex items-center justify-between">
               <span className="text-muted-foreground font-mono text-xs font-bold">
                 {formatSimId(p.simulation_id)}
               </span>
               <div className="flex gap-1 text-xs">
-                <span className={p.project_id ? 'text-[#FF5722]' : 'text-muted-foreground/40'}>
-                  ◇
-                </span>
-                <span className="text-[#FF5722]">◈</span>
-                <span className={p.report_id ? 'text-[#FF5722]' : 'text-muted-foreground/40'}>
-                  ◆
-                </span>
+                <span className={p.project_id ? 'text-brand' : 'text-muted-foreground/40'}>◇</span>
+                <span className="text-brand">◈</span>
+                <span className={p.report_id ? 'text-brand' : 'text-muted-foreground/40'}>◆</span>
               </div>
             </div>
             <h3 className="mb-1 truncate text-sm font-semibold">

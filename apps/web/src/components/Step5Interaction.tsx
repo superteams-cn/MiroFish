@@ -271,7 +271,7 @@ function SidebarItem({
       onClick={onClick}
       className={cn(
         'flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition',
-        active ? 'bg-[#FF5722] text-white' : 'hover:bg-accent',
+        active ? 'bg-brand text-white' : 'hover:bg-accent',
         className,
       )}
     >

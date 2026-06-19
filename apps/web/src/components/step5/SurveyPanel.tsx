@@ -60,7 +60,7 @@ export function SurveyPanel({
               onClick={() => onToggle(idx)}
               className={cn(
                 'rounded-md border px-2 py-1.5 text-left text-xs transition',
-                selected.has(idx) ? 'border-[#FF5722] bg-[#FF5722]/10' : 'hover:bg-accent',
+                selected.has(idx) ? 'border-brand bg-brand/10' : 'hover:bg-accent',
               )}
             >
               <div className="truncate font-medium">{p.username || `Agent ${idx}`}</div>

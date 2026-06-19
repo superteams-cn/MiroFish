@@ -32,8 +32,8 @@ export function ActivationCard({ phase, config, getAgentUsername }: Props) {
       {ec && (
         <div className="space-y-4">
           {/* 叙事方向 */}
-          <div className="rounded-md border border-[#FF5722]/30 bg-[#FF5722]/5 p-3">
-            <span className="mb-1 flex items-center gap-1.5 text-[10px] font-semibold text-[#FF5722]">
+          <div className="border-brand/30 bg-brand/5 rounded-md border p-3">
+            <span className="text-brand mb-1 flex items-center gap-1.5 text-[10px] font-semibold">
               <Compass className="h-4 w-4" />
               {t('step2.narrativeDirection')}
             </span>
@@ -65,7 +65,7 @@ export function ActivationCard({ phase, config, getAgentUsername }: Props) {
               <div className="border-muted space-y-2 border-l-2 pl-4">
                 {ec.initial_posts.map((post, idx) => (
                   <div key={idx} className="relative">
-                    <span className="absolute -left-[21px] top-1.5 h-2 w-2 rounded-full bg-[#FF5722]" />
+                    <span className="bg-brand absolute -left-[21px] top-1.5 h-2 w-2 rounded-full" />
                     <div className="bg-muted/50 rounded-md p-2.5">
                       <div className="text-muted-foreground mb-1 flex items-center gap-2 text-[10px]">
                         <span className="font-semibold">{post.poster_type}</span>

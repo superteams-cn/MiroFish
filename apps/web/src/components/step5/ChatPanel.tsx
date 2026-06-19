@@ -67,7 +67,7 @@ export function ChatPanel({ title, subtitle, messages, isSending, onSend }: Prop
             <div
               className={cn(
                 'max-w-[80%] rounded-lg px-3 py-2 text-sm',
-                msg.role === 'user' ? 'bg-[#FF5722] text-white' : 'bg-card border',
+                msg.role === 'user' ? 'bg-brand text-white' : 'bg-card border',
               )}
             >
               {msg.role === 'assistant' ? (

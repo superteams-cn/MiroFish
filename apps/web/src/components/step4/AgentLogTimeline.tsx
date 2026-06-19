@@ -60,7 +60,7 @@ export function AgentLogTimeline({ logs }: { logs: AgentLogEntry[] }) {
                   ? 'bg-green-500'
                   : log.action === 'tool_call'
                     ? 'bg-purple-500'
-                    : 'bg-[#FF5722]',
+                    : 'bg-brand',
               )}
             />
             <div className="bg-card rounded-md border p-2.5">
@@ -100,7 +100,7 @@ export function AgentLogTimeline({ logs }: { logs: AgentLogEntry[] }) {
                     variant="link"
                     size="sm"
                     onClick={() => toggle(key)}
-                    className="mt-1 h-auto p-0 text-[10px] text-[#FF5722]"
+                    className="text-brand mt-1 h-auto p-0 text-[10px]"
                   >
                     {isOpen ? '收起' : '展开详情'}
                   </Button>

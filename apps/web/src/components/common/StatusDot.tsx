@@ -3,7 +3,7 @@ import { cn } from '@/lib/utils'
 export type StatusVariant = 'processing' | 'completed' | 'error' | 'idle'
 
 const COLORS: Record<StatusVariant, string> = {
-  processing: 'bg-[#FF5722] animate-pulse',
+  processing: 'bg-brand animate-pulse',
   completed: 'bg-green-500',
   error: 'bg-red-500',
   idle: 'bg-muted-foreground/40',

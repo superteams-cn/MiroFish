@@ -21,8 +21,8 @@ export function Markdown({ content, className, stripLeadingH2 }: MarkdownProps) 
         'prose-p:leading-relaxed prose-li:my-0.5',
         'prose-code:rounded prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:text-[0.85em] prose-code:before:content-none prose-code:after:content-none',
         'prose-pre:bg-muted prose-pre:text-foreground',
-        'prose-blockquote:border-l-[#FF5722] prose-blockquote:text-muted-foreground',
-        'prose-a:text-[#FF5722]',
+        'prose-blockquote:border-l-brand prose-blockquote:text-muted-foreground',
+        'prose-a:text-brand',
         className,
       )}
     >

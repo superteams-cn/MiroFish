@@ -294,7 +294,7 @@ export function Step3Simulation({
         </div>
         {actions.length === 0 && (
           <div className="text-muted-foreground flex h-40 flex-col items-center justify-center gap-2 text-sm">
-            <span className="h-3 w-3 animate-ping rounded-full bg-[#FF5722]" />
+            <span className="bg-brand h-3 w-3 animate-ping rounded-full" />
             {t('step3.waitingForActions')}
           </div>
         )}

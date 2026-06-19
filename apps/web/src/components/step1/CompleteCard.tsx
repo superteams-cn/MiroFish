@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Loader2 } from 'lucide-react'
+import { toast } from 'sonner'
 
 import { StepCard } from '@/components/StepCard'
 import { Button } from '@/components/ui/button'
@@ -32,10 +33,12 @@ export function CompleteCard({ phase, projectData }: Props) {
       if (res.success && res.data?.simulation_id) {
         navigate(`/simulation/${res.data.simulation_id}`)
       } else {
-        alert(t('step1.createSimulationFailed', { error: res.error || t('common.unknownError') }))
+        toast.error(
+          t('step1.createSimulationFailed', { error: res.error || t('common.unknownError') }),
+        )
       }
     } catch (err) {
-      alert(t('step1.createSimulationException', { error: (err as Error).message }))
+      toast.error(t('step1.createSimulationException', { error: (err as Error).message }))
     } finally {
       setCreating(false)
     }

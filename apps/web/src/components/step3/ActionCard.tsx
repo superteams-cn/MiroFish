@@ -19,8 +19,8 @@ const TYPE_LABELS: Record<string, string> = {
 }
 
 const TYPE_COLORS: Record<string, string> = {
-  CREATE_POST: 'bg-[#FF5722] text-white',
-  QUOTE_POST: 'bg-[#FF5722] text-white',
+  CREATE_POST: 'bg-brand text-white',
+  QUOTE_POST: 'bg-brand text-white',
   CREATE_COMMENT: 'bg-blue-500 text-white',
   DO_NOTHING: 'bg-muted text-muted-foreground',
 }

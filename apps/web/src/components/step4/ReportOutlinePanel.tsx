@@ -47,7 +47,7 @@ export function ReportOutlinePanel({
       {/* 报告头部 */}
       <div className="mb-6 border-b pb-4">
         <div className="text-muted-foreground mb-2 flex items-center gap-3 text-[10px]">
-          <span className="rounded bg-[#FF5722] px-2 py-0.5 font-semibold text-white">
+          <span className="bg-brand rounded px-2 py-0.5 font-semibold text-white">
             {t('step4.predictionReport')}
           </span>
           <span className="font-mono">ID: {reportId}</span>
@@ -68,7 +68,7 @@ export function ReportOutlinePanel({
               key={idx}
               className={cn(
                 'rounded-lg border p-4',
-                isActive && 'border-[#FF5722]',
+                isActive && 'border-brand',
                 content && 'cursor-default',
               )}
             >
@@ -100,7 +100,7 @@ export function ReportOutlinePanel({
                   {content ? (
                     <Markdown content={content} stripLeadingH2 />
                   ) : isActive ? (
-                    <div className="flex items-center gap-2 text-xs text-[#FF5722]">
+                    <div className="text-brand flex items-center gap-2 text-xs">
                       <Loader2 className="h-3.5 w-3.5 animate-spin" />
                       {t('step4.generatingSection', { title: section.title })}
                     </div>

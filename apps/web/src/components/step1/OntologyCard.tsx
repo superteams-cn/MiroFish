@@ -59,7 +59,7 @@ export function OntologyCard({ phase, projectData, ontologyProgress }: Props) {
       description={t('step1.ontologyDesc')}
     >
       {phase === 0 && ontologyProgress && (
-        <div className="mb-3 flex items-center gap-2 text-xs text-[#FF5722]">
+        <div className="text-brand mb-3 flex items-center gap-2 text-xs">
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
           <span>{ontologyProgress.message || t('step1.analyzingDocs')}</span>
         </div>

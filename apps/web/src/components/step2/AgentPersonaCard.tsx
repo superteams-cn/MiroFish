@@ -61,7 +61,7 @@ export function AgentPersonaCard({
                 key={idx}
                 type="button"
                 onClick={() => onSelectProfile(profile)}
-                className="bg-card cursor-pointer rounded-md border p-3 text-left transition hover:border-[#FF5722]"
+                className="bg-card hover:border-brand cursor-pointer rounded-md border p-3 text-left transition"
               >
                 <div className="flex items-baseline justify-between">
                   <span className="text-sm font-semibold">{profile.username || 'Unknown'}</span>
