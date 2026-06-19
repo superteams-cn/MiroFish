@@ -314,6 +314,25 @@ export function GraphPanel({
       .velocityDecay(0.4)
       .alphaDecay(isLarge ? 0.05 : 0.0228)
 
+    // 箭头标记：常态(灰)/高亮(粉)两色；userSpaceOnUse 固定大小，orient=auto 沿路径朝向
+    const defs = svg.append('defs')
+    const makeArrow = (id: string, color: string) =>
+      defs
+        .append('marker')
+        .attr('id', id)
+        .attr('viewBox', '0 0 10 10')
+        .attr('refX', 10)
+        .attr('refY', 5)
+        .attr('markerUnits', 'userSpaceOnUse')
+        .attr('markerWidth', 9)
+        .attr('markerHeight', 9)
+        .attr('orient', 'auto')
+        .append('path')
+        .attr('d', 'M0,0 L10,5 L0,10 z')
+        .attr('fill', color)
+    makeArrow('sf-arrow', EDGE_COLOR)
+    makeArrow('sf-arrow-hl', EDGE_HL)
+
     // ---- 边（path 支持曲线/自环）----
     const linkGroup = root.append('g')
     const link = linkGroup
@@ -324,6 +343,7 @@ export function GraphPanel({
       .attr('stroke', EDGE_COLOR)
       .attr('stroke-opacity', 0.75)
       .attr('stroke-width', 1.4)
+      .attr('marker-end', 'url(#sf-arrow)')
       .style('cursor', 'pointer')
       .on('click', (event, d) => {
         event.stopPropagation()
@@ -331,6 +351,7 @@ export function GraphPanel({
         d3.select(event.currentTarget as SVGPathElement)
           .attr('stroke', EDGE_HL)
           .attr('stroke-width', 3)
+          .attr('marker-end', 'url(#sf-arrow-hl)')
         setSelected({ kind: 'edge', data: d.raw })
       })
 
@@ -358,6 +379,7 @@ export function GraphPanel({
           .filter((l) => l === d)
           .attr('stroke', EDGE_HL)
           .attr('stroke-width', 3)
+          .attr('marker-end', 'url(#sf-arrow-hl)')
         setSelected({ kind: 'edge', data: d.raw })
       })
     edgeLabelSelRef.current = edgeLabel
@@ -393,7 +415,7 @@ export function GraphPanel({
       .style('display', labelsVisible ? 'block' : 'none')
 
     function resetHighlight() {
-      link.attr('stroke', EDGE_COLOR).attr('stroke-width', 1.4)
+      link.attr('stroke', EDGE_COLOR).attr('stroke-width', 1.4).attr('marker-end', 'url(#sf-arrow)')
       circle.attr('stroke', '#fff').attr('stroke-width', 2)
     }
 
@@ -409,6 +431,7 @@ export function GraphPanel({
           .filter((l) => (l.source as SimNode).id === d.id || (l.target as SimNode).id === d.id)
           .attr('stroke', EDGE_HL)
           .attr('stroke-width', 2.4)
+          .attr('marker-end', 'url(#sf-arrow-hl)')
         setSelected({ kind: 'node', data: d.raw, entityType: d.type, color: colorOf(d.type) })
       })
       .on('mouseenter', (event) => {
@@ -468,14 +491,29 @@ export function GraphPanel({
         const r = NODE_R + 18
         return `M${sx + NODE_R * 0.6},${sy - 4} A${r},${r} 0 1,1 ${sx + NODE_R * 0.6},${sy + 4}`
       }
-      if (d.curvature === 0) return `M${sx},${sy} L${tx},${ty}`
+      // 末端回缩到目标节点边缘，使箭头落在节点外沿而非被圆圈盖住
+      const gap = NODE_R + 5
+      if (d.curvature === 0) {
+        const dx = tx - sx
+        const dy = ty - sy
+        const dist = Math.hypot(dx, dy) || 1
+        const ex = tx - (dx / dist) * gap
+        const ey = ty - (dy / dist) * gap
+        return `M${sx},${sy} L${ex},${ey}`
+      }
       const dx = tx - sx
       const dy = ty - sy
       const dist = Math.hypot(dx, dy) || 1
       const offset = Math.max(35, dist * (0.25 + d.pairTotal * 0.05))
       const cx = (sx + tx) / 2 + (-dy / dist) * d.curvature * offset
       const cy = (sy + ty) / 2 + (dx / dist) * d.curvature * offset
-      return `M${sx},${sy} Q${cx},${cy} ${tx},${ty}`
+      // 曲线末端切线方向 ≈ (终点 - 控制点)，沿该方向回缩
+      const tgx = tx - cx
+      const tgy = ty - cy
+      const tgd = Math.hypot(tgx, tgy) || 1
+      const ex = tx - (tgx / tgd) * gap
+      const ey = ty - (tgy / tgd) * gap
+      return `M${sx},${sy} Q${cx},${cy} ${ex},${ey}`
     }
     const labelPos = (d: SimLink) => {
       const s = d.source as SimNode
