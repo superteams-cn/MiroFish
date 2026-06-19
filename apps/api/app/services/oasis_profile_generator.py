@@ -53,6 +53,10 @@ class OasisAgentProfile:
     profession: str | None = None
     interested_topics: list[str] = field(default_factory=list)
 
+    # 结构化人设四维度（可选，OASIS 引擎不依赖；仅用于前端展示）
+    # 含 experience/behavior/memory/social 四个字符串，缺省为空 dict
+    dimensions: dict[str, str] = field(default_factory=dict)
+
     # 来源实体信息
     source_entity_uuid: str | None = None
     source_entity_type: str | None = None
@@ -84,6 +88,8 @@ class OasisAgentProfile:
             profile["profession"] = self.profession
         if self.interested_topics:
             profile["interested_topics"] = self.interested_topics
+        if self.dimensions:
+            profile["dimensions"] = self.dimensions
 
         return profile
 
@@ -114,6 +120,8 @@ class OasisAgentProfile:
             profile["profession"] = self.profession
         if self.interested_topics:
             profile["interested_topics"] = self.interested_topics
+        if self.dimensions:
+            profile["dimensions"] = self.dimensions
 
         return profile
 
@@ -135,6 +143,7 @@ class OasisAgentProfile:
             "country": self.country,
             "profession": self.profession,
             "interested_topics": self.interested_topics,
+            "dimensions": self.dimensions,
             "source_entity_uuid": self.source_entity_uuid,
             "source_entity_type": self.source_entity_type,
             "created_at": self.created_at,
@@ -342,9 +351,34 @@ class OasisProfileGenerator:
             country=profile_data.get("country"),
             profession=profile_data.get("profession"),
             interested_topics=profile_data.get("interested_topics", []),
+            dimensions=self._normalize_dimensions(profile_data.get("dimensions")),
             source_entity_uuid=entity.uuid,
             source_entity_type=entity_type,
         )
+
+    # 结构化人设四维度的标准键
+    DIMENSION_KEYS = ("experience", "behavior", "memory", "social")
+
+    def _normalize_dimensions(self, raw: Any) -> dict[str, str]:
+        """
+        将 LLM 产出的 dimensions 规整为 {experience, behavior, memory, social} 四个字符串。
+
+        - LLM 未产出或格式异常时返回空 dict（不报错，前端回退到注解式展示）。
+        - 仅保留四个标准键，值统一转为去除首尾空白的字符串。
+        """
+        if not isinstance(raw, dict):
+            return {}
+
+        result: dict[str, str] = {}
+        for key in self.DIMENSION_KEYS:
+            value = raw.get(key)
+            if value is None:
+                continue
+            text = value if isinstance(value, str) else str(value)
+            text = text.strip()
+            if text:
+                result[key] = text
+        return result
 
     def _generate_username(self, name: str) -> str:
         """生成用户名"""
@@ -751,10 +785,16 @@ class OasisProfileGenerator:
 6. country: 国家（使用中文，如"中国"）
 7. profession: 职业
 8. interested_topics: 感兴趣话题数组
+9. dimensions: 人设四维度对象（用于结构化展示，需与 persona 内容保持一致），包含四个字符串字段:
+   - experience: 事件全景经历——该个体在此事件中的完整行为轨迹与重要经历（150-300字）
+   - behavior: 行为模式侧写——经验总结、行事风格、发帖与互动偏好（150-300字）
+   - memory: 独特记忆印记——与事件相关的关键记忆、已有动作与情绪反应（150-300字）
+   - social: 社会关系网络——主要社会关系、与其他实体的链接与交互（150-300字）
 
 重要:
 - 所有字段值必须是字符串或数字，不要使用换行符
 - persona必须是一段连贯的文字描述
+- dimensions 的四个字段都必须是非空字符串，是对 persona 的结构化拆解
 - {get_language_instruction()} (gender字段必须用英文male/female)
 - 内容要与实体信息保持一致
 - age必须是有效的整数，gender必须是"male"或"female"
@@ -800,10 +840,16 @@ class OasisProfileGenerator:
 6. country: 国家（使用中文，如"中国"）
 7. profession: 机构职能描述
 8. interested_topics: 关注领域数组
+9. dimensions: 账号四维度对象（用于结构化展示，需与 persona 内容保持一致），包含四个字符串字段:
+   - experience: 事件全景经历——该机构在此事件中的完整动作轨迹与重要节点（150-300字）
+   - behavior: 行为模式侧写——发言风格、发布内容特点、运营习惯（150-300字）
+   - memory: 独特记忆印记——与事件相关的关键节点、已有表态与处理方式（150-300字）
+   - social: 社会关系网络——代表的群体、与其他机构/个体的关系与交互（150-300字）
 
 重要:
 - 所有字段值必须是字符串或数字，不允许null值
 - persona必须是一段连贯的文字描述，不要使用换行符
+- dimensions 的四个字段都必须是非空字符串，是对 persona 的结构化拆解
 - {get_language_instruction()} (gender字段必须用英文"other")
 - age必须是整数30，gender必须是字符串"other"
 - 机构账号发言要符合其身份定位"""
@@ -1225,6 +1271,9 @@ class OasisProfileGenerator:
                 item["profession"] = profile.profession
             if profile.interested_topics:
                 item["interested_topics"] = profile.interested_topics
+            # 结构化四维度（可选，OASIS 引擎不依赖；仅供前端展示）
+            if profile.dimensions:
+                item["dimensions"] = profile.dimensions
 
             data.append(item)
 
