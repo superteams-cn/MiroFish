@@ -1,7 +1,10 @@
 import { useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
+import { Share2, Workflow } from 'lucide-react'
 
 import { GraphPanel, type GraphData } from '@/components/GraphPanel'
+import { GraphPanelG6 } from '@/components/GraphPanelG6'
+import { Button } from '@/components/ui/button'
 import { LanguageSwitcher } from '@/components/LanguageSwitcher'
 import { ThemeSwitcher } from '@/components/ThemeSwitcher'
 import { Brand } from '@/components/common/Brand'
@@ -11,6 +14,7 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { cn } from '@/lib/utils'
 
 export type ViewMode = 'graph' | 'split' | 'workbench'
+export type GraphEngine = 'd3' | 'g6'
 export type WorkflowStatus = 'processing' | 'completed' | 'error'
 
 interface WorkflowLayoutProps {
@@ -48,6 +52,7 @@ export function WorkflowLayout({
 }: WorkflowLayoutProps) {
   const { t } = useTranslation()
   const [viewMode, setViewMode] = useState<ViewMode>(initialViewMode)
+  const [engine, setEngine] = useState<GraphEngine>('g6')
 
   const toggleMaximize = (target: ViewMode) => setViewMode((v) => (v === target ? 'split' : target))
 
@@ -74,6 +79,14 @@ export function WorkflowLayout({
         </ToggleGroup>
 
         <div className="flex items-center gap-4">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setEngine((e) => (e === 'g6' ? 'd3' : 'g6'))}
+            title={engine === 'g6' ? t('graph.engineSwitchToD3') : t('graph.engineSwitchToG6')}
+          >
+            {engine === 'g6' ? <Share2 className="h-4 w-4" /> : <Workflow className="h-4 w-4" />}
+          </Button>
           <ThemeSwitcher />
           <LanguageSwitcher />
           <Separator orientation="vertical" className="h-3.5" />
@@ -94,12 +107,22 @@ export function WorkflowLayout({
         <div
           className={cn('h-full overflow-hidden border-r transition-all duration-300', leftWidth)}
         >
-          <GraphPanel
-            graphData={graphData}
-            loading={graphLoading}
-            onRefresh={onRefreshGraph}
-            onToggleMaximize={() => toggleMaximize('graph')}
-          />
+          {engine === 'g6' ? (
+            <GraphPanelG6
+              graphData={graphData}
+              loading={graphLoading}
+              onRefresh={onRefreshGraph}
+              onToggleMaximize={() => toggleMaximize('graph')}
+              resizeKey={viewMode}
+            />
+          ) : (
+            <GraphPanel
+              graphData={graphData}
+              loading={graphLoading}
+              onRefresh={onRefreshGraph}
+              onToggleMaximize={() => toggleMaximize('graph')}
+            />
+          )}
         </div>
         <div className={cn('h-full overflow-hidden transition-all duration-300', rightWidth)}>
           {children}

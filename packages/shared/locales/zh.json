@@ -453,7 +453,19 @@
     "entityTypes": "实体类型",
     "showEdgeLabels": "显示关系标签",
     "noData": "暂无图谱数据",
-    "noDataDesc": "完成图谱构建后将在此可视化展示"
+    "noDataDesc": "完成图谱构建后将在此可视化展示",
+    "layoutForce": "力导向",
+    "layoutRadial": "辐射",
+    "layoutConcentric": "同心圆",
+    "layoutDagre": "层级",
+    "hideIsolated": "隐藏孤立",
+    "searchPlaceholder": "搜索节点",
+    "zoomIn": "放大",
+    "zoomOut": "缩小",
+    "fitView": "适配视图",
+    "resetGraph": "重置图谱",
+    "engineSwitchToD3": "切换为经典图谱 (D3)",
+    "engineSwitchToG6": "切换为高级图谱 (G6)"
   },
   "history": {
     "title": "推演记录",

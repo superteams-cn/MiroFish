@@ -453,7 +453,19 @@
     "entityTypes": "Entity Types",
     "showEdgeLabels": "Show Edge Labels",
     "noData": "No graph data yet",
-    "noDataDesc": "The graph visualization will appear here after graph construction completes"
+    "noDataDesc": "The graph visualization will appear here after graph construction completes",
+    "layoutForce": "Force",
+    "layoutRadial": "Radial",
+    "layoutConcentric": "Concentric",
+    "layoutDagre": "Hierarchy",
+    "hideIsolated": "Hide isolated",
+    "searchPlaceholder": "Search nodes",
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out",
+    "fitView": "Fit to view",
+    "resetGraph": "Reset graph",
+    "engineSwitchToD3": "Switch to classic graph (D3)",
+    "engineSwitchToG6": "Switch to advanced graph (G6)"
   },
   "history": {
     "title": "Simulation History",
