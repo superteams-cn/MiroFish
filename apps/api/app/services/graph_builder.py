@@ -625,9 +625,9 @@ class GraphBuilderService:
         schema: dict[str, Any],
         chunk_idx: int,
     ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-        # 三元组上限随块长等比例放大,保持抽取密度不随 chunk_size 变化而漏抽
-        max_triplets = max(Config.GRAPH_EXTRACT_MAX_TRIPLETS, len(chunk) // 70)
-        extractor = self._make_schema_extractor(schema, max_triplets)
+        # 每块三元组上限由 GRAPH_EXTRACT_MAX_TRIPLETS 显式控制(与输出 token 预算配套,
+        # 自动按块长放大易超出 GRAPH_EXTRACT_MAX_TOKENS 导致 JSON 截断)。
+        extractor = self._make_schema_extractor(schema)
         text_node = TextNode(text=chunk, id_=f"chunk_{chunk_idx:04d}")
         extracted_node = extractor([text_node])[0]
 
