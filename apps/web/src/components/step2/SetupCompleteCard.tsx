@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { Clock } from 'lucide-react'
 
-import { StepCard } from './StepCard'
+import { StepCard } from '@/components/StepCard'
 
 interface Props {
   phase: number

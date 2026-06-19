@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next'
 
-import { StepCard } from './StepCard'
+import { StepCard } from '@/components/StepCard'
 import type { Profile } from '@/lib/step2-types'
 
 interface Props {

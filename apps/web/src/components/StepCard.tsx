@@ -2,14 +2,14 @@ import type { ReactNode } from 'react'
 
 import { cn } from '@/lib/utils'
 
-type CardStatus = 'pending' | 'processing' | 'completed'
+export type CardStatus = 'pending' | 'processing' | 'completed'
 
 interface StepCardProps {
   num: string
   title: string
   status: CardStatus
-  /** 状态徽标文案 */
-  statusText: string
+  /** 状态徽标文案；为空则不显示徽标 */
+  statusText?: string
   /** 是否高亮（当前进行中） */
   active?: boolean
   apiNote?: string
@@ -17,7 +17,7 @@ interface StepCardProps {
   children?: ReactNode
 }
 
-/** Step2 各步骤卡片的统一外壳（编号 + 标题 + 状态徽标 + 内容）。 */
+/** 各步骤卡片的统一外壳（编号 + 标题 + 状态徽标 + 内容）。Step1/Step2 共用。 */
 export function StepCard({
   num,
   title,
@@ -47,9 +47,11 @@ export function StepCard({
           <span className="font-mono text-xl font-bold text-muted-foreground">{num}</span>
           <span className="text-sm font-semibold">{title}</span>
         </div>
-        <span className={cn('rounded px-2 py-1 text-[10px] font-semibold uppercase', badgeCls)}>
-          {statusText}
-        </span>
+        {statusText && (
+          <span className={cn('rounded px-2 py-1 text-[10px] font-semibold uppercase', badgeCls)}>
+            {statusText}
+          </span>
+        )}
       </div>
       {apiNote && <p className="mb-2 font-mono text-[10px] text-muted-foreground">{apiNote}</p>}
       {description && (

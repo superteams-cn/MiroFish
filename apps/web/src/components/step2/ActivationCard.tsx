@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { Compass } from 'lucide-react'
 
-import { StepCard } from './StepCard'
+import { StepCard } from '@/components/StepCard'
 import type { SimulationConfig } from '@/lib/step2-types'
 
 interface Props {
