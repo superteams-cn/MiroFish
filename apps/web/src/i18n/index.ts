@@ -29,7 +29,8 @@ i18n.use(initReactI18next).init({
   resources,
   lng: savedLocale,
   fallbackLng: 'zh',
-  interpolation: { escapeValue: false },
+  // 文案占位符统一用单花括号 {var}（与后端 utils/locale.py 的 t() 共用同一份 locale 文件）。
+  interpolation: { escapeValue: false, prefix: '{', suffix: '}' },
 })
 
 export default i18n
