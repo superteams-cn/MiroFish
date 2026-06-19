@@ -29,3 +29,8 @@ export function getGraphData(graphId: string): Promise<ApiEnvelope<GraphData>> {
 export function getProject(projectId: string): Promise<ApiEnvelope<ProjectData>> {
   return http.get<ProjectData>(`/api/graph/project/${projectId}`)
 }
+
+/** 删除项目（连同图谱/模拟/报告等关联数据）。 */
+export function deleteProject(projectId: string): Promise<ApiEnvelope<{ message?: string }>> {
+  return http.delete<{ message?: string }>(`/api/graph/project/${projectId}`)
+}

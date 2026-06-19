@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { Loader2 } from 'lucide-react'
+import { Loader2, Trash2 } from 'lucide-react'
+import { toast } from 'sonner'
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { getSimulationHistory } from '@/lib/api/simulation'
+import { deleteProject } from '@/lib/api/graph'
 import { cn } from '@/lib/utils'
 
 interface HistoryProject {
@@ -57,6 +59,9 @@ export function HistoryDatabase({ onHasProjects }: HistoryDatabaseProps = {}) {
   const [projects, setProjects] = useState<HistoryProject[]>([])
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<HistoryProject | null>(null)
+  // 待确认删除的项目（null 表示无）
+  const [pendingDelete, setPendingDelete] = useState<HistoryProject | null>(null)
+  const [deleting, setDeleting] = useState(false)
   // 进入视口前卡片处于堆叠/淡入态，进入后展开为网格
   const [revealed, setRevealed] = useState(false)
   const loadedRef = useRef(false)
@@ -83,6 +88,34 @@ export function HistoryDatabase({ onHasProjects }: HistoryDatabaseProps = {}) {
     loadedRef.current = true
     void load()
   }, [load])
+
+  // 删除项目（连同图谱/模拟/报告）。历史记录以模拟为单位，但删除作用于其所属项目。
+  const confirmDelete = async () => {
+    const p = pendingDelete
+    if (!p) return
+    if (!p.project_id) {
+      toast.error(t('history.noProjectToDelete'))
+      setPendingDelete(null)
+      return
+    }
+    try {
+      setDeleting(true)
+      const res = await deleteProject(p.project_id)
+      if (res.success) {
+        toast.success(t('history.deleteSuccess'))
+        // 同项目下的其它模拟一并消失，直接按 project_id 过滤
+        setProjects((prev) => prev.filter((x) => x.project_id !== p.project_id))
+        if (selected?.project_id === p.project_id) setSelected(null)
+        setPendingDelete(null)
+      } else {
+        toast.error(res.error || t('history.deleteFailed'))
+      }
+    } catch {
+      toast.error(t('history.deleteFailed'))
+    } finally {
+      setDeleting(false)
+    }
+  }
 
   // 进入视口时触发展开动画（一次性，避免来回滚动反复抖动）
   useEffect(() => {
@@ -158,16 +191,24 @@ export function HistoryDatabase({ onHasProjects }: HistoryDatabaseProps = {}) {
           const delay = revealed ? `${Math.min(index, 11) * 45}ms` : '0ms'
 
           return (
-            <button
+            <div
               key={p.simulation_id}
+              role="button"
+              tabIndex={0}
               onClick={() => setSelected(p)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  setSelected(p)
+                }
+              }}
               style={{
                 ...(revealed ? gridStyle : stackStyle),
                 transitionDelay: delay,
                 willChange: 'transform, opacity',
               }}
               className={cn(
-                'bg-card group relative isolate overflow-hidden rounded-lg border p-4 text-left',
+                'bg-card focus-visible:ring-ring group relative isolate cursor-pointer overflow-hidden rounded-lg border p-4 text-left focus-visible:outline-none focus-visible:ring-2',
                 'transition-[transform,opacity,box-shadow,border-color] duration-700 ease-[cubic-bezier(0.23,1,0.32,1)]',
                 'hover:border-brand hover:-translate-y-1 hover:shadow-lg',
                 'motion-reduce:transition-none',
@@ -175,6 +216,21 @@ export function HistoryDatabase({ onHasProjects }: HistoryDatabaseProps = {}) {
             >
               {/* 取景框风格角标 */}
               <span className="border-foreground/40 pointer-events-none absolute left-1.5 top-1.5 h-2 w-2 border-l-[1.5px] border-t-[1.5px] opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
+
+              {/* 删除按钮（hover 显隐，仅在有关联项目时可用） */}
+              <button
+                type="button"
+                aria-label={t('history.deleteProject')}
+                title={p.project_id ? t('history.deleteProject') : t('history.noProjectToDelete')}
+                disabled={!p.project_id}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setPendingDelete(p)
+                }}
+                className="bg-background/90 text-muted-foreground hover:text-destructive hover:border-destructive absolute right-1.5 top-1.5 z-10 grid h-6 w-6 place-items-center rounded-md border opacity-0 transition-opacity duration-200 disabled:cursor-not-allowed disabled:opacity-0 group-hover:opacity-100"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
 
               <div className="mb-2 flex items-center justify-between">
                 <span className="text-muted-foreground group-hover:text-brand font-mono text-xs font-bold transition-colors">
@@ -223,7 +279,7 @@ export function HistoryDatabase({ onHasProjects }: HistoryDatabaseProps = {}) {
 
               {/* 底部强调线（hover 时展开） */}
               <span className="bg-brand absolute bottom-0 left-0 h-0.5 w-0 transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)] group-hover:w-full" />
-            </button>
+            </div>
           )
         })}
       </div>
@@ -289,8 +345,62 @@ export function HistoryDatabase({ onHasProjects }: HistoryDatabaseProps = {}) {
                   {t('history.step4Button')}
                 </Button>
               </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={!selected.project_id}
+                onClick={() => setPendingDelete(selected)}
+                className="text-muted-foreground hover:text-destructive hover:bg-destructive/10 w-full gap-1.5"
+              >
+                <Trash2 className="h-4 w-4" />
+                {t('history.deleteProject')}
+              </Button>
             </>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* 删除确认 */}
+      <Dialog
+        open={!!pendingDelete}
+        onOpenChange={(open) => !open && !deleting && setPendingDelete(null)}
+      >
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{t('history.deleteConfirmTitle')}</DialogTitle>
+          </DialogHeader>
+          <p className="text-muted-foreground text-sm">{t('history.deleteConfirmDesc')}</p>
+          {pendingDelete && (
+            <p className="bg-muted/50 truncate rounded-md px-3 py-2 font-mono text-xs">
+              {formatSimId(pendingDelete.simulation_id)} ·{' '}
+              {truncate(pendingDelete.simulation_requirement, 28) ||
+                t('history.untitledSimulation')}
+            </p>
+          )}
+          <div className="flex justify-end gap-2 pt-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={deleting}
+              onClick={() => setPendingDelete(null)}
+            >
+              {t('common.cancel')}
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              disabled={deleting}
+              onClick={confirmDelete}
+              className="gap-1.5"
+            >
+              {deleting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Trash2 className="h-4 w-4" />
+              )}
+              {t('history.deleteProject')}
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </section>

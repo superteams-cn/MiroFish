@@ -463,7 +463,13 @@
     "unknownFile": "未知文件",
     "btnStep1": "步骤1",
     "btnStep2": "步骤2",
-    "btnStep4": "步骤4"
+    "btnStep4": "步骤4",
+    "deleteProject": "删除项目",
+    "deleteConfirmTitle": "确认删除该项目?",
+    "deleteConfirmDesc": "将永久删除该项目及其图谱、模拟与报告数据,此操作不可恢复。",
+    "deleteSuccess": "项目已删除",
+    "deleteFailed": "删除失败",
+    "noProjectToDelete": "该记录无关联项目,无法删除"
   },
   "api": {
     "projectNotFound": "项目不存在: {{id}}",

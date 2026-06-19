@@ -72,6 +72,8 @@ export const http = {
     service.get(url, config) as unknown as Promise<ApiEnvelope<T>>,
   post: <T>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<ApiEnvelope<T>> =>
     service.post(url, data, config) as unknown as Promise<ApiEnvelope<T>>,
+  delete: <T>(url: string, config?: AxiosRequestConfig): Promise<ApiEnvelope<T>> =>
+    service.delete(url, config) as unknown as Promise<ApiEnvelope<T>>,
 }
 
 export default service

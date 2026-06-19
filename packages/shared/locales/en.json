@@ -463,7 +463,13 @@
     "unknownFile": "Unknown file",
     "btnStep1": "Step1",
     "btnStep2": "Step2",
-    "btnStep4": "Step4"
+    "btnStep4": "Step4",
+    "deleteProject": "Delete Project",
+    "deleteConfirmTitle": "Delete this project?",
+    "deleteConfirmDesc": "This permanently deletes the project and its graph, simulation and report data. This cannot be undone.",
+    "deleteSuccess": "Project deleted",
+    "deleteFailed": "Delete failed",
+    "noProjectToDelete": "No associated project to delete"
   },
   "api": {
     "projectNotFound": "Project not found: {{id}}",
