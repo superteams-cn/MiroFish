@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { ArrowLeft } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -15,19 +16,21 @@ interface PagePlaceholderProps {
  * 保证路由、i18n、样式链路可端到端验证。移植完成后逐个替换。
  */
 export function PagePlaceholder({ title, detail }: PagePlaceholderProps) {
+  const { t } = useTranslation()
+
   return (
     <div className="container flex min-h-screen flex-col items-center justify-center gap-6 py-12">
       <Card className="w-full max-w-lg">
         <CardHeader>
           <CardTitle>{title}</CardTitle>
-          <CardDescription>该页面正在从 Vue 迁移到 React，敬请期待。</CardDescription>
+          <CardDescription>{t('placeholder.migrationDesc')}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {detail && <p className="text-muted-foreground text-sm">{detail}</p>}
           <Button asChild variant="outline">
             <Link to="/">
               <ArrowLeft className="h-4 w-4" />
-              返回首页
+              {t('placeholder.backHome')}
             </Link>
           </Button>
         </CardContent>

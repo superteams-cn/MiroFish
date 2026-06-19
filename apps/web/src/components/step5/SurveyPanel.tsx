@@ -42,14 +42,14 @@ export function SurveyPanel({
       <div className="mb-4">
         <div className="mb-2 flex items-center justify-between">
           <span className="text-sm font-semibold">
-            {t('step5.selectAgents', { defaultValue: '选择受访 Agent' })} ({selected.size})
+            {t('step5.selectAgents')} ({selected.size})
           </span>
           <div className="flex gap-1">
             <Button variant="ghost" size="sm" onClick={onSelectAll}>
-              {t('step5.selectAll', { defaultValue: '全选' })}
+              {t('step5.selectAll')}
             </Button>
             <Button variant="ghost" size="sm" onClick={onClear}>
-              {t('step5.clear', { defaultValue: '清空' })}
+              {t('step5.clear')}
             </Button>
           </div>
         </div>
@@ -76,9 +76,7 @@ export function SurveyPanel({
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
           rows={3}
-          placeholder={t('step5.surveyPlaceholder', {
-            defaultValue: '输入要向所选 Agent 提出的问题',
-          })}
+          placeholder={t('step5.surveyPlaceholder')}
           className="resize-none"
         />
         <Button
@@ -88,7 +86,7 @@ export function SurveyPanel({
           disabled={isSurveying || selected.size === 0 || !question.trim()}
         >
           {isSurveying && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-          {t('step5.submitSurvey', { defaultValue: '发起问卷' })}
+          {t('step5.submitSurvey')}
         </Button>
       </div>
 
@@ -96,7 +94,7 @@ export function SurveyPanel({
       {results.length > 0 && (
         <div className="space-y-3">
           <span className="text-sm font-semibold">
-            {t('step5.surveyResults', { defaultValue: '问卷结果' })} ({results.length})
+            {t('step5.surveyResults')} ({results.length})
           </span>
           {results.map((r) => (
             <div key={r.agent_id} className="rounded-md border p-3">

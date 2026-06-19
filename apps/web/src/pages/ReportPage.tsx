@@ -94,7 +94,11 @@ export default function ReportPage() {
   }
 
   const statusText =
-    status === 'error' ? 'Error' : status === 'completed' ? 'Completed' : 'Generating'
+    status === 'error'
+      ? t('common.error')
+      : status === 'completed'
+        ? t('common.completed')
+        : t('workflowStatus.generating')
 
   return (
     <WorkflowLayout

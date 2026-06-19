@@ -111,9 +111,12 @@ export function Step5Interaction({ reportId, simulationId, addLog }: Step5Props)
         if (prev.length > 0) {
           const ctx = prev
             .slice(-6)
-            .map((m) => `${m.role === 'user' ? '提问者' : '你'}：${m.content}`)
+            .map(
+              (m) =>
+                `${m.role === 'user' ? t('step5.askerRole') : t('step5.agentSelfRole')}：${m.content}`,
+            )
             .join('\n')
-          prompt = `以下是我们之前的对话：\n${ctx}\n\n现在我的新问题是：${text}`
+          prompt = t('step5.followupPrompt', { context: ctx, question: text })
         }
         const res = await interviewAgents({
           simulation_id: simulationId,
@@ -188,7 +191,7 @@ export function Step5Interaction({ reportId, simulationId, addLog }: Step5Props)
         />
         <div className="text-muted-foreground mt-2 px-2 text-[10px] font-semibold uppercase">
           <Users className="mr-1 inline h-3 w-3" />
-          Agents
+          {t('step5.agentsLabel')}
         </div>
         {profiles.map((p, idx) => (
           <SidebarItem
@@ -204,7 +207,7 @@ export function Step5Interaction({ reportId, simulationId, addLog }: Step5Props)
         ))}
         <SidebarItem
           icon={<ClipboardList className="h-4 w-4" />}
-          label={t('step5.survey', { defaultValue: '问卷调查' })}
+          label={t('step5.survey')}
           active={mode === 'survey'}
           onClick={() => setMode('survey')}
           className="mt-2"

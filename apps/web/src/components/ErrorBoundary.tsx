@@ -1,6 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
 
 import { Button } from '@/components/ui/button'
+import i18n from '@/i18n'
 
 interface Props {
   children: ReactNode
@@ -25,13 +26,15 @@ export class ErrorBoundary extends Component<Props, State> {
     if (this.state.error) {
       return (
         <div className="flex min-h-screen flex-col items-center justify-center gap-4 p-6 text-center">
-          <h1 className="text-xl font-bold">页面出错了</h1>
+          <h1 className="text-xl font-bold">{i18n.t('errorBoundary.title')}</h1>
           <p className="text-muted-foreground max-w-md text-sm">{this.state.error.message}</p>
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => this.setState({ error: null })}>
-              重试
+              {i18n.t('errorBoundary.retry')}
             </Button>
-            <Button onClick={() => (window.location.href = '/')}>返回首页</Button>
+            <Button onClick={() => (window.location.href = '/')}>
+              {i18n.t('errorBoundary.backHome')}
+            </Button>
           </div>
         </div>
       )

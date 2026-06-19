@@ -239,8 +239,8 @@ export function GraphPanel({ graphData, loading, onRefresh, onToggleMaximize }: 
         <div className="absolute inset-0">
           <EmptyState
             icon={Network}
-            title={t('graph.noData', { defaultValue: '暂无图谱数据' })}
-            description={t('graph.noDataDesc', { defaultValue: '完成图谱构建后将在此可视化展示' })}
+            title={t('graph.noData')}
+            description={t('graph.noDataDesc')}
           />
         </div>
       )}

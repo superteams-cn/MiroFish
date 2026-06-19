@@ -76,9 +76,9 @@ export function Step4Report({ reportId, systemLogs, addLog, onUpdateStatus }: St
       })
       agentLine.current = res.data.from_line + newLogs.length
     } catch (err) {
-      console.warn('Failed to fetch agent log:', err)
+      addLog(t('log.fetchAgentLogFailed', { error: (err as Error).message }))
     }
-  }, [onUpdateStatus, reportId, stopPolling])
+  }, [addLog, onUpdateStatus, reportId, stopPolling, t])
 
   const fetchConsoleLog = useCallback(async () => {
     if (!reportId) return
@@ -90,15 +90,15 @@ export function Step4Report({ reportId, systemLogs, addLog, onUpdateStatus }: St
       setConsoleLogs((prev) => [...prev, ...newLogs])
       consoleLine.current = res.data.from_line + newLogs.length
     } catch (err) {
-      console.warn('Failed to fetch console log:', err)
+      addLog(t('log.fetchConsoleLogFailed', { error: (err as Error).message }))
     }
-  }, [reportId])
+  }, [addLog, reportId, t])
 
   useEffect(() => {
     if (initedRef.current) return
     initedRef.current = true
     if (reportId) {
-      addLog(`Report Agent initialized: ${reportId}`)
+      addLog(t('log.reportAgentInitialized', { reportId }))
       void fetchAgentLog()
       void fetchConsoleLog()
       agentTimer.current = setInterval(fetchAgentLog, 2000)
@@ -116,17 +116,15 @@ export function Step4Report({ reportId, systemLogs, addLog, onUpdateStatus }: St
         <div className="bg-card flex items-center justify-between border-b px-4 py-2">
           <TabsList>
             <TabsTrigger value="report">{t('step4.predictionReport')}</TabsTrigger>
-            <TabsTrigger value="log">Agent Log</TabsTrigger>
-            <TabsTrigger value="console">
-              {t('console.title', { defaultValue: '控制台' })}
-            </TabsTrigger>
+            <TabsTrigger value="log">{t('step4.agentLog')}</TabsTrigger>
+            <TabsTrigger value="console">{t('step4.consoleOutput')}</TabsTrigger>
           </TabsList>
           <Button
             size="sm"
             onClick={() => reportId && navigate(`/interaction/${reportId}`)}
             disabled={!isComplete}
           >
-            {t('step4.enterInteraction', { defaultValue: '进入深度互动' })}
+            {t('step4.enterInteraction')}
             <ArrowRight className="h-3.5 w-3.5" />
           </Button>
         </div>
@@ -144,13 +142,15 @@ export function Step4Report({ reportId, systemLogs, addLog, onUpdateStatus }: St
           {agentLogs.length > 0 ? (
             <AgentLogTimeline logs={agentLogs} />
           ) : (
-            <p className="text-muted-foreground text-sm">等待 Agent 执行…</p>
+            <p className="text-muted-foreground text-sm">{t('step4.waitingForAgentExecution')}</p>
           )}
         </TabsContent>
 
         <TabsContent value="console" className="mt-0 flex-1 overflow-hidden">
           <div className="h-full overflow-y-auto bg-black p-4 font-mono text-[11px] text-zinc-300">
-            {consoleLogs.length === 0 && <span className="text-zinc-600">// 暂无控制台输出</span>}
+            {consoleLogs.length === 0 && (
+              <span className="text-zinc-600">{t('step4.emptyConsoleOutput')}</span>
+            )}
             {consoleLogs.map((line, idx) => (
               <div key={idx} className="break-all leading-relaxed">
                 {line}

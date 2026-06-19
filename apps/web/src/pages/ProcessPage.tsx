@@ -75,29 +75,29 @@ export default function ProcessPage() {
     if (graphPollTimer.current) {
       clearInterval(graphPollTimer.current)
       graphPollTimer.current = null
-      addLog('Graph polling stopped.')
+      addLog(t('log.graphPollingStopped'))
     }
-  }, [addLog])
+  }, [addLog, t])
 
   const loadGraph = useCallback(
     async (graphId: string) => {
       setGraphLoading(true)
-      addLog(`Loading full graph data: ${graphId}`)
+      addLog(t('log.loadingFullGraphData', { id: graphId }))
       try {
         const res = await getGraphData(graphId)
         if (res.success) {
           setGraphData(res.data)
-          addLog('Graph data loaded successfully.')
+          addLog(t('log.graphDataLoadSuccess'))
         } else {
-          addLog(`Failed to load graph data: ${res.error}`)
+          addLog(t('log.graphDataLoadFailed', { error: res.error || t('common.unknownError') }))
         }
       } catch (e) {
-        addLog(`Exception loading graph: ${(e as Error).message}`)
+        addLog(t('log.graphDataLoadException', { error: (e as Error).message }))
       } finally {
         setGraphLoading(false)
       }
     },
-    [addLog],
+    [addLog, t],
   )
 
   const fetchGraphData = useCallback(async () => {
@@ -109,19 +109,19 @@ export default function ProcessPage() {
           setGraphData(gRes.data)
           const nodeCount = gRes.data.node_count || gRes.data.nodes?.length || 0
           const edgeCount = gRes.data.edge_count || gRes.data.edges?.length || 0
-          addLog(`Graph data refreshed. Nodes: ${nodeCount}, Edges: ${edgeCount}`)
+          addLog(t('log.graphDataRefreshed', { nodes: nodeCount, edges: edgeCount }))
         }
       }
     } catch (e) {
-      console.warn('Graph fetch error:', e)
+      console.warn(t('log.graphFetchError', { error: (e as Error).message }))
     }
-  }, [addLog])
+  }, [addLog, t])
 
   const startGraphPolling = useCallback(() => {
-    addLog('Started polling for graph data...')
+    addLog(t('log.graphPollingStarted'))
     void fetchGraphData()
     graphPollTimer.current = setInterval(fetchGraphData, 4000)
-  }, [addLog, fetchGraphData])
+  }, [addLog, fetchGraphData, t])
 
   const handleMissingTask = useCallback(
     async (taskId: string) => {
@@ -132,20 +132,20 @@ export default function ProcessPage() {
           stopGraphPolling()
           setProjectData(projRes.data)
           setCurrentPhase(2)
-          addLog('Build task not found, but graph already completed. Loading final graph.')
+          addLog(t('log.buildTaskMissingGraphCompleted'))
           await loadGraph(projRes.data.graph_id)
         } else if (projRes.success && projRes.data.status === 'graph_building') {
           // 后台任务随服务端重启丢失（任务仅存于内存），但项目仍处于构建中：
           // 先展示已增量落库的部分图谱，再自动以 force 续建直至完成。
           setProjectData(projRes.data)
           setCurrentPhase(1)
-          addLog(`Build task ${taskId} lost (likely server restart). Auto-resuming build...`)
+          addLog(t('log.buildTaskLostAutoResume', { taskId }))
           if (projRes.data.graph_id) await fetchGraphData()
           await startBuildGraphRef.current?.(true)
         } else {
           stopGraphPolling()
           setError(t('main.buildInterrupted'))
-          addLog(`Build task ${taskId} not found and graph not completed — build was interrupted.`)
+          addLog(t('log.buildTaskMissingInterrupted', { taskId }))
         }
       } catch (err) {
         setError((err as Error).message)
@@ -167,7 +167,7 @@ export default function ProcessPage() {
           setBuildProgress({ progress: task.progress || 0, message: task.message })
 
           if (task.status === 'completed') {
-            addLog('Graph build task completed.')
+            addLog(t('log.graphBuildTaskCompleted'))
             stopPolling()
             stopGraphPolling()
             setCurrentPhase(2)
@@ -179,7 +179,7 @@ export default function ProcessPage() {
           } else if (task.status === 'failed') {
             stopPolling()
             setError(task.error ?? '')
-            addLog(`Graph build task failed: ${task.error}`)
+            addLog(t('log.graphBuildTaskFailed', { error: task.error || t('common.unknownError') }))
           }
         }
       } catch (e) {
@@ -191,7 +191,7 @@ export default function ProcessPage() {
         }
       }
     },
-    [addLog, handleMissingTask, loadGraph, stopGraphPolling, stopPolling],
+    [addLog, handleMissingTask, loadGraph, stopGraphPolling, stopPolling, t],
   )
 
   const startPollingTask = useCallback(
@@ -207,23 +207,23 @@ export default function ProcessPage() {
       try {
         setCurrentPhase(1)
         setError('')
-        setBuildProgress({ progress: 0, message: 'Starting build...' })
-        addLog(force ? 'Resuming graph build (force)...' : 'Initiating graph build...')
+        setBuildProgress({ progress: 0, message: t('log.startingBuild') })
+        addLog(force ? t('log.resumingGraphBuild') : t('log.initiatingGraphBuild'))
         const res = await buildGraph({ project_id: projectIdRef.current, force })
         if (res.success) {
-          addLog(`Graph build task started. Task ID: ${res.data.task_id}`)
+          addLog(t('log.graphBuildTaskStarted', { taskId: res.data.task_id }))
           startGraphPolling()
           startPollingTask(res.data.task_id)
         } else {
           setError(res.error ?? '')
-          addLog(`Error starting build: ${res.error}`)
+          addLog(t('log.errorStartingBuild', { error: res.error || t('common.unknownError') }))
         }
       } catch (err) {
         setError((err as Error).message)
-        addLog(`Exception in startBuildGraph: ${(err as Error).message}`)
+        addLog(t('log.exceptionInStartBuildGraph', { error: (err as Error).message }))
       }
     },
-    [addLog, startGraphPolling, startPollingTask],
+    [addLog, startGraphPolling, startPollingTask, t],
   )
 
   // 保持 ref 指向最新的 startBuildGraph，供 handleMissingTask 续建调用
@@ -235,14 +235,14 @@ export default function ProcessPage() {
     const pending = getPendingUpload()
     if (!pending.isPending || pending.files.length === 0) {
       setError(t('main.noPendingFiles'))
-      addLog('Error: No pending files found. Redirecting to home.')
+      addLog(t('log.noPendingFilesRedirect'))
       setTimeout(() => navigate('/', { replace: true }), 1500)
       return
     }
     try {
       setCurrentPhase(0)
-      setOntologyProgress({ message: 'Uploading and analyzing docs...' })
-      addLog('Starting ontology generation: Uploading files...')
+      setOntologyProgress({ message: t('log.uploadingAnalyzingDocs') })
+      addLog(t('log.startingOntologyGeneration'))
       const formData = new FormData()
       pending.files.forEach((f) => formData.append('files', f))
       formData.append('simulation_requirement', pending.simulationRequirement)
@@ -253,10 +253,10 @@ export default function ProcessPage() {
         setProjectData(res.data)
         navigate(`/process/${res.data.project_id}`, { replace: true })
         setOntologyProgress(null)
-        addLog(`Ontology generated successfully for project ${res.data.project_id}`)
+        addLog(t('log.ontologyGeneratedForProject', { projectId: res.data.project_id }))
         await startBuildGraph()
       } else {
-        setError(res.error || 'Ontology generation failed')
+        setError(res.error || t('log.ontologyGenerationFailed'))
       }
     } catch (err) {
       setError((err as Error).message)
@@ -265,7 +265,7 @@ export default function ProcessPage() {
 
   const loadProject = useCallback(async () => {
     try {
-      addLog(`Loading project ${projectIdRef.current}...`)
+      addLog(t('log.loadingProject', { projectId: projectIdRef.current }))
       const res = await getProject(projectIdRef.current)
       if (!res.success) {
         setError(res.error ?? '')
@@ -273,7 +273,7 @@ export default function ProcessPage() {
       }
       setProjectData(res.data)
       const status = res.data.status
-      addLog(`Project loaded. Status: ${status}`)
+      addLog(t('log.projectLoadedStatus', { status }))
       if (status === 'ontology_generated' && !res.data.graph_id) {
         await startBuildGraph()
       } else if (status === 'graph_building' && res.data.graph_build_task_id) {
@@ -286,18 +286,18 @@ export default function ProcessPage() {
       } else if (status === 'created' || status === 'ontology_generated') {
         setCurrentPhase(0)
       } else if (status === 'failed') {
-        setError('Project failed')
+        setError(t('log.projectFailed'))
       }
     } catch (err) {
       setError((err as Error).message)
     }
-  }, [addLog, loadGraph, startBuildGraph, startGraphPolling, startPollingTask])
+  }, [addLog, loadGraph, startBuildGraph, startGraphPolling, startPollingTask, t])
 
   // 初始化（仅一次）
   useEffect(() => {
     if (initedRef.current) return
     initedRef.current = true
-    addLog('Project view initialized.')
+    addLog(t('log.projectViewInit'))
     if (projectIdRef.current === 'new') {
       void handleNewProject()
     } else {
@@ -312,7 +312,7 @@ export default function ProcessPage() {
 
   const refreshGraph = () => {
     if (projectData?.graph_id) {
-      addLog('Manual graph refresh triggered.')
+      addLog(t('log.manualGraphRefresh'))
       void loadGraph(projectData.graph_id)
     }
   }
@@ -324,14 +324,14 @@ export default function ProcessPage() {
       ? 'completed'
       : 'processing'
   const statusText = error
-    ? 'Error'
+    ? t('common.error')
     : currentPhase >= 2
-      ? 'Ready'
+      ? t('workflowStatus.ready')
       : currentPhase === 1
-        ? 'Building Graph'
+        ? t('workflowStatus.buildingGraph')
         : currentPhase === 0
-          ? 'Generating Ontology'
-          : 'Initializing'
+          ? t('workflowStatus.generatingOntology')
+          : t('workflowStatus.initializing')
 
   return (
     <WorkflowLayout

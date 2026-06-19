@@ -124,7 +124,12 @@ export default function SimulationRunPage() {
     }
   }, [isSimulating, refreshGraph])
 
-  const statusText = status === 'error' ? 'Error' : status === 'completed' ? 'Completed' : 'Running'
+  const statusText =
+    status === 'error'
+      ? t('common.error')
+      : status === 'completed'
+        ? t('common.completed')
+        : t('workflowStatus.running')
 
   return (
     <WorkflowLayout

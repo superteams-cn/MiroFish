@@ -162,7 +162,12 @@ export default function SimulationPage() {
     }
   }
 
-  const statusText = status === 'error' ? 'Error' : status === 'completed' ? 'Ready' : 'Preparing'
+  const statusText =
+    status === 'error'
+      ? t('common.error')
+      : status === 'completed'
+        ? t('workflowStatus.ready')
+        : t('workflowStatus.generating')
 
   return (
     <WorkflowLayout

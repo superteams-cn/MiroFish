@@ -1,33 +1,34 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import type { AgentLogEntry } from '@/lib/step4-types'
 
-// 动作类型 → 展示标签
-const ACTION_LABELS: Record<string, string> = {
-  report_start: 'Report Start',
-  planning_start: 'Planning',
-  planning_complete: 'Plan Complete',
-  section_start: 'Section Start',
-  section_content: 'Section Content',
-  section_complete: 'Section Done',
-  tool_call: 'Tool Call',
-  tool_result: 'Tool Result',
-  llm_response: 'LLM Response',
-  report_complete: 'Complete',
+const ACTION_LABEL_KEYS: Record<string, string> = {
+  report_start: 'step4.actionReportStart',
+  planning_start: 'step4.actionPlanning',
+  planning_complete: 'step4.actionPlanComplete',
+  section_start: 'step4.actionSectionStart',
+  section_content: 'step4.actionSectionContent',
+  section_complete: 'step4.actionSectionDone',
+  tool_call: 'step4.actionToolCall',
+  tool_result: 'step4.actionToolResult',
+  llm_response: 'step4.actionLlmResponse',
+  report_complete: 'step4.actionComplete',
 }
 
-const TOOL_NAMES: Record<string, string> = {
-  insight_forge: 'Deep Insight',
-  panorama_search: 'Panorama Search',
-  interview_agents: 'Agent Interview',
-  quick_search: 'Quick Search',
+const TOOL_NAME_KEYS: Record<string, string> = {
+  insight_forge: 'step4.toolDeepInsight',
+  panorama_search: 'step4.toolPanoramaSearch',
+  interview_agents: 'step4.toolAgentInterview',
+  quick_search: 'step4.toolQuickSearch',
 }
 
 /** ReportAgent 执行日志时间线（可展开查看工具参数/结果/LLM 响应）。 */
 export function AgentLogTimeline({ logs }: { logs: AgentLogEntry[] }) {
+  const { t } = useTranslation()
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
 
   const toggle = (key: string) => {
@@ -66,10 +67,12 @@ export function AgentLogTimeline({ logs }: { logs: AgentLogEntry[] }) {
             <div className="bg-card rounded-md border p-2.5">
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-semibold">
-                  {ACTION_LABELS[log.action] || log.action}
+                  {ACTION_LABEL_KEYS[log.action] ? t(ACTION_LABEL_KEYS[log.action]) : log.action}
                   {detail.tool_name && (
                     <Badge variant="secondary" className="ml-1.5 text-[10px] font-normal">
-                      {TOOL_NAMES[detail.tool_name] || detail.tool_name}
+                      {TOOL_NAME_KEYS[detail.tool_name]
+                        ? t(TOOL_NAME_KEYS[detail.tool_name])
+                        : detail.tool_name}
                     </Badge>
                   )}
                 </span>
@@ -86,7 +89,7 @@ export function AgentLogTimeline({ logs }: { logs: AgentLogEntry[] }) {
               )}
               {log.action === 'planning_complete' && detail.outline && (
                 <p className="text-muted-foreground mt-1 text-[11px]">
-                  {detail.outline.sections?.length || 0} sections planned
+                  {t('step4.sectionsPlanned', { count: detail.outline.sections?.length || 0 })}
                 </p>
               )}
               {log.action === 'section_start' && log.section_title && (
@@ -102,7 +105,7 @@ export function AgentLogTimeline({ logs }: { logs: AgentLogEntry[] }) {
                     onClick={() => toggle(key)}
                     className="text-brand mt-1 h-auto p-0 text-[10px]"
                   >
-                    {isOpen ? '收起' : '展开详情'}
+                    {isOpen ? t('step4.collapseDetail') : t('step4.expandDetail')}
                   </Button>
                   {isOpen && (
                     <pre className="bg-muted mt-1.5 max-h-60 overflow-auto whitespace-pre-wrap rounded p-2 text-[10px] leading-relaxed">

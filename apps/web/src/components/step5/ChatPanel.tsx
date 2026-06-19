@@ -56,7 +56,7 @@ export function ChatPanel({ title, subtitle, messages, isSending, onSend }: Prop
       <div className="flex-1 space-y-4 overflow-y-auto p-4">
         {messages.length === 0 && (
           <p className="text-muted-foreground mt-8 text-center text-sm">
-            {t('step5.startConversation', { defaultValue: '开始对话吧' })}
+            {t('step5.startConversation')}
           </p>
         )}
         {messages.map((msg, idx) => (
@@ -109,7 +109,7 @@ export function ChatPanel({ title, subtitle, messages, isSending, onSend }: Prop
               }
             }}
             rows={2}
-            placeholder={t('step5.inputPlaceholder', { defaultValue: '输入消息，回车发送' })}
+            placeholder={t('step5.inputPlaceholder')}
             className="flex-1 resize-none"
           />
           <Button

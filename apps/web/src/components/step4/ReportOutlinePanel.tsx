@@ -40,7 +40,7 @@ export function ReportOutlinePanel({
       <div className="mx-auto max-w-3xl space-y-4">
         <div className="text-muted-foreground flex items-center gap-2 text-sm">
           <Loader2 className="h-4 w-4 animate-spin" />
-          {t('step4.generatingReport', { defaultValue: '报告生成中…' })}
+          {t('step4.generatingReport')}
         </div>
         <Skeleton className="h-8 w-2/3" />
         <Skeleton className="h-4 w-full" />
