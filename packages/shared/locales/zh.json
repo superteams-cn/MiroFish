@@ -869,9 +869,6 @@
     "label": "主题",
     "toggle": "切换明暗主题",
     "light": "浅色",
-    "dark": "暗色",
-    "bauhaus": "包豪斯几何",
-    "dopamine": "多巴胺极繁",
-    "digitalGold": "数字黄金暗域"
+    "dark": "暗色"
   }
 }

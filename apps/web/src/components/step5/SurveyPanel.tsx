@@ -64,7 +64,7 @@ export function SurveyPanel({
                 selected.has(idx) ? 'border-brand bg-brand/10' : 'hover:bg-accent',
               )}
             >
-              <div className="truncate font-medium">{p.username || `Agent ${idx}`}</div>
+              <div className="truncate font-medium">{p.name || p.username || `Agent ${idx}`}</div>
               <div className="text-muted-foreground truncate text-[10px]">{p.profession}</div>
             </button>
           ))}

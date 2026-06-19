@@ -8,6 +8,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { LanguageSwitcher } from '@/components/LanguageSwitcher'
+import { ThemeSwitcher } from '@/components/ThemeSwitcher'
 import { HistoryDatabase } from '@/components/HistoryDatabase'
 import { setPendingUpload } from '@/stores/pendingUpload'
 
@@ -61,7 +62,10 @@ export default function HomePage() {
           </h1>
           <p className="text-muted-foreground text-sm">{t('home.tagline')}</p>
         </div>
-        <LanguageSwitcher />
+        <div className="flex items-center gap-1">
+          <ThemeSwitcher />
+          <LanguageSwitcher />
+        </div>
       </header>
 
       {/* 主标题 */}

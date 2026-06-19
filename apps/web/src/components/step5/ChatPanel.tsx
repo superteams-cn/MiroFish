@@ -42,8 +42,10 @@ export function ChatPanel({ target, agent, messages, isSending, onSend }: Props)
   const endRef = useRef<HTMLDivElement>(null)
 
   const isReportAgent = target === 'report_agent'
-  const senderName = isReportAgent ? t('step5.reportAgentName') : agent?.username || 'Agent'
-  const senderInitial = isReportAgent ? 'R' : initial(agent?.username)
+  // 个体优先展示无数字后缀的真名(name)，缺失时回退到 username
+  const agentDisplayName = agent?.name || agent?.username
+  const senderName = isReportAgent ? t('step5.reportAgentName') : agentDisplayName || 'Agent'
+  const senderInitial = isReportAgent ? 'R' : initial(agentDisplayName)
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -246,13 +248,15 @@ function AgentProfileCard({ agent }: { agent: Profile }) {
       <div className="flex items-center gap-3 px-4 py-3">
         <Avatar className="h-10 w-10">
           <AvatarFallback className="bg-brand text-sm font-semibold text-white">
-            {initial(agent.username)}
+            {initial(agent.name || agent.username)}
           </AvatarFallback>
         </Avatar>
         <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-semibold">{agent.username || 'Agent'}</div>
+          <div className="truncate text-sm font-semibold">
+            {agent.name || agent.username || 'Agent'}
+          </div>
           <div className="text-muted-foreground flex items-center gap-2 text-xs">
-            {agent.name && <span className="text-muted-foreground/70">@{agent.name}</span>}
+            {agent.username && <span className="text-muted-foreground/70">@{agent.username}</span>}
             <span className="bg-muted rounded px-1.5 py-0.5 text-[10px] font-medium">
               {agent.profession || t('step2.unknownProfession')}
             </span>

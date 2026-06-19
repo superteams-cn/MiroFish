@@ -160,7 +160,10 @@ export function Step5Interaction({ reportId, simulationId, addLog }: Step5Props)
       } else {
         const idx = selectedAgentIndex as number
         addLog(
-          t('log.sendToAgent', { name: selectedAgent?.username, message: text.substring(0, 50) }),
+          t('log.sendToAgent', {
+            name: selectedAgent?.name || selectedAgent?.username,
+            message: text.substring(0, 50),
+          }),
         )
         let prompt = text
         if (prev.length > 0) {
@@ -183,7 +186,7 @@ export function Step5Interaction({ reportId, simulationId, addLog }: Step5Props)
         const agentResult =
           dict[`reddit_${idx}`] || dict[`twitter_${idx}`] || Object.values(dict)[0]
         answer = (agentResult?.response || agentResult?.answer) ?? t('step5.noResponse')
-        addLog(t('log.agentReplied', { name: selectedAgent?.username }))
+        addLog(t('log.agentReplied', { name: selectedAgent?.name || selectedAgent?.username }))
       }
       append(key, {
         role: 'assistant',
@@ -221,7 +224,7 @@ export function Step5Interaction({ reportId, simulationId, addLog }: Step5Props)
         const agentResult = dict[`reddit_${agent_id}`] || dict[`twitter_${agent_id}`]
         return {
           agent_id,
-          agent_name: agent?.username || `Agent ${agent_id}`,
+          agent_name: agent?.name || agent?.username || `Agent ${agent_id}`,
           profession: agent?.profession,
           question: question.trim(),
           answer: (agentResult?.response || agentResult?.answer) ?? t('step5.noResponse'),
@@ -249,7 +252,7 @@ export function Step5Interaction({ reportId, simulationId, addLog }: Step5Props)
     setMode('chat')
     setTargetKey(`agent_${idx}`)
     setDropdownOpen(false)
-    addLog(t('log.selectChatTarget', { name: profiles[idx]?.username }))
+    addLog(t('log.selectChatTarget', { name: profiles[idx]?.name || profiles[idx]?.username }))
   }
 
   return (
@@ -298,7 +301,9 @@ export function Step5Interaction({ reportId, simulationId, addLog }: Step5Props)
                   <span className="flex min-w-0 items-center gap-1.5">
                     <User className="h-3.5 w-3.5 shrink-0 opacity-70" />
                     <span className="truncate">
-                      {selectedAgent ? selectedAgent.username : t('step5.chatWithAgent')}
+                      {selectedAgent
+                        ? selectedAgent.name || selectedAgent.username
+                        : t('step5.chatWithAgent')}
                     </span>
                   </span>
                   <ChevronDown
@@ -325,12 +330,12 @@ export function Step5Interaction({ reportId, simulationId, addLog }: Step5Props)
                       >
                         <Avatar className="h-8 w-8 shrink-0">
                           <AvatarFallback className="bg-brand text-[11px] font-semibold text-white">
-                            {initial(agent.username)}
+                            {initial(agent.name || agent.username)}
                           </AvatarFallback>
                         </Avatar>
                         <div className="min-w-0 flex-1">
                           <div className="truncate text-[13px] font-semibold">
-                            {agent.username || `Agent ${idx}`}
+                            {agent.name || agent.username || `Agent ${idx}`}
                           </div>
                           <div className="text-muted-foreground truncate text-[11px]">
                             {agent.profession || t('step2.unknownProfession')}

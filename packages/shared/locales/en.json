@@ -869,9 +869,6 @@
     "label": "Theme",
     "toggle": "Toggle light/dark theme",
     "light": "Light",
-    "dark": "Dark",
-    "bauhaus": "Bauhaus Geometric",
-    "dopamine": "Dopamine Maximalism",
-    "digitalGold": "Digital Gold Void"
+    "dark": "Dark"
   }
 }
