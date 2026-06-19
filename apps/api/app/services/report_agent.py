@@ -19,6 +19,8 @@ from enum import StrEnum
 from typing import Any
 
 from ..config import Config
+from ..db import session_scope
+from ..db_models import ReportRow
 from ..utils.llm_client import LLMClient
 from ..utils.locale import get_language_instruction, t
 from ..utils.logger import get_logger
@@ -1534,16 +1536,10 @@ class ReportAgent:
         """
         生成完整报告（分章节实时输出）
 
-        每个章节生成完成后立即保存到文件夹，不需要等待整个报告完成。
-        文件结构：
-        reports/{report_id}/
-            meta.json       - 报告元信息
-            outline.json    - 报告大纲
-            progress.json   - 生成进度
-            section_01.md   - 第1章节
-            section_02.md   - 第2章节
-            ...
-            full_report.md  - 完整报告
+        每个章节生成完成后立即写入 Postgres（reports 表的 sections 字段），
+        前端可轮询 /sections 实时获取，不需要等待整个报告完成。
+        元数据/大纲/进度/章节/完整 markdown 均存于 Postgres；生成期的
+        agent_log.jsonl / console_log.txt 仍写在运行节点本地。
 
         Args:
             progress_callback: 进度回调函数 (stage, progress, message)
@@ -1896,27 +1892,15 @@ class ReportManager:
     """
     报告管理器
 
-    负责报告的持久化存储和检索
+    负责报告的持久化存储和检索。
 
-    文件结构（分章节输出）：
-    reports/
-      {report_id}/
-        meta.json          - 报告元信息和状态
-        outline.json       - 报告大纲
-        progress.json      - 生成进度
-        section_01.md      - 第1章节
-        section_02.md      - 第2章节
-        ...
-        full_report.md     - 完整报告
+    存储后端：
+    - 元数据/大纲/进度/章节/完整 markdown → Postgres（reports 表）；
+    - 生成期 append 日志（agent_log.jsonl / console_log.txt）→ 运行节点本地。
     """
 
-    # 报告存储目录
+    # 报告本地目录（仅承载生成期 append 日志：agent_log.jsonl / console_log.txt）
     REPORTS_DIR = os.path.join(Config.UPLOAD_FOLDER, "reports")
-
-    @classmethod
-    def _ensure_reports_dir(cls):
-        """确保报告根目录存在"""
-        os.makedirs(cls.REPORTS_DIR, exist_ok=True)
 
     @classmethod
     def _get_report_folder(cls, report_id: str) -> str:
@@ -1931,29 +1915,13 @@ class ReportManager:
         return folder
 
     @classmethod
-    def _get_report_path(cls, report_id: str) -> str:
-        """获取报告元信息文件路径"""
-        return os.path.join(cls._get_report_folder(report_id), "meta.json")
-
-    @classmethod
-    def _get_report_markdown_path(cls, report_id: str) -> str:
-        """获取完整报告Markdown文件路径"""
-        return os.path.join(cls._get_report_folder(report_id), "full_report.md")
-
-    @classmethod
-    def _get_outline_path(cls, report_id: str) -> str:
-        """获取大纲文件路径"""
-        return os.path.join(cls._get_report_folder(report_id), "outline.json")
-
-    @classmethod
-    def _get_progress_path(cls, report_id: str) -> str:
-        """获取进度文件路径"""
-        return os.path.join(cls._get_report_folder(report_id), "progress.json")
-
-    @classmethod
-    def _get_section_path(cls, report_id: str, section_index: int) -> str:
-        """获取章节Markdown文件路径"""
-        return os.path.join(cls._get_report_folder(report_id), f"section_{section_index:02d}.md")
+    def _load_row(cls, session, report_id: str, create: bool = False) -> ReportRow | None:
+        """加载报告行；create=True 时不存在则新建并 add。"""
+        row = session.get(ReportRow, report_id)
+        if row is None and create:
+            row = ReportRow(report_id=report_id, created_at=datetime.now().isoformat())
+            session.add(row)
+        return row
 
     @classmethod
     def _get_agent_log_path(cls, report_id: str) -> str:
@@ -2080,49 +2048,40 @@ class ReportManager:
 
     @classmethod
     def save_outline(cls, report_id: str, outline: ReportOutline) -> None:
-        """
-        保存报告大纲
-
-        在规划阶段完成后立即调用
-        """
-        cls._ensure_report_folder(report_id)
-
-        with open(cls._get_outline_path(report_id), "w", encoding="utf-8") as f:
-            json.dump(outline.to_dict(), f, ensure_ascii=False, indent=2)
-
+        """保存报告大纲到 Postgres（规划阶段完成后调用）。"""
+        with session_scope() as session:
+            row = cls._load_row(session, report_id, create=True)
+            row.outline = outline.to_dict()
         logger.info(t("report.outlineSaved", reportId=report_id))
 
     @classmethod
     def save_section(cls, report_id: str, section_index: int, section: ReportSection) -> str:
-        """
-        保存单个章节
-
-        在每个章节生成完成后立即调用，实现分章节输出
-
-        Args:
-            report_id: 报告ID
-            section_index: 章节索引（从1开始）
-            section: 章节对象
+        """保存单个章节到 Postgres（分章节输出，每章生成后调用）。
 
         Returns:
-            保存的文件路径
+            章节文件名标识（兼容旧返回值语义）
         """
-        cls._ensure_report_folder(report_id)
-
         # 构建章节Markdown内容 - 清理可能存在的重复标题
         cleaned_content = cls._clean_section_content(section.content, section.title)
         md_content = f"## {section.title}\n\n"
         if cleaned_content:
             md_content += f"{cleaned_content}\n\n"
 
-        # 保存文件
         file_suffix = f"section_{section_index:02d}.md"
-        file_path = os.path.join(cls._get_report_folder(report_id), file_suffix)
-        with open(file_path, "w", encoding="utf-8") as f:
-            f.write(md_content)
+        entry = {
+            "filename": file_suffix,
+            "section_index": section_index,
+            "content": md_content,
+        }
+        with session_scope() as session:
+            row = cls._load_row(session, report_id, create=True)
+            sections = [s for s in (row.sections or []) if s.get("section_index") != section_index]
+            sections.append(entry)
+            sections.sort(key=lambda s: s.get("section_index", 0))
+            row.sections = sections
 
         logger.info(t("report.sectionFileSaved", reportId=report_id, fileSuffix=file_suffix))
-        return file_path
+        return file_suffix
 
     @classmethod
     def _clean_section_content(cls, content: str, section_title: str) -> str:
@@ -2220,47 +2179,24 @@ class ReportManager:
             "updated_at": datetime.now().isoformat(),
         }
 
-        with open(cls._get_progress_path(report_id), "w", encoding="utf-8") as f:
-            json.dump(progress_data, f, ensure_ascii=False, indent=2)
+        with session_scope() as session:
+            row = cls._load_row(session, report_id, create=True)
+            row.progress = progress_data
 
     @classmethod
     def get_progress(cls, report_id: str) -> dict[str, Any] | None:
         """获取报告生成进度"""
-        path = cls._get_progress_path(report_id)
-
-        if not os.path.exists(path):
-            return None
-
-        with open(path, encoding="utf-8") as f:
-            return json.load(f)
+        with session_scope() as session:
+            row = session.get(ReportRow, report_id)
+            return row.progress if row else None
 
     @classmethod
     def get_generated_sections(cls, report_id: str) -> list[dict[str, Any]]:
-        """
-        获取已生成的章节列表
-
-        返回所有已保存的章节文件信息
-        """
-        folder = cls._get_report_folder(report_id)
-
-        if not os.path.exists(folder):
-            return []
-
-        sections = []
-        for filename in sorted(os.listdir(folder)):
-            if filename.startswith("section_") and filename.endswith(".md"):
-                file_path = os.path.join(folder, filename)
-                with open(file_path, encoding="utf-8") as f:
-                    content = f.read()
-
-                # 从文件名解析章节索引
-                parts = filename.replace(".md", "").split("_")
-                section_index = int(parts[1])
-
-                sections.append(
-                    {"filename": filename, "section_index": section_index, "content": content}
-                )
-
+        """获取已生成的章节列表（Postgres，按章节序号排序）。"""
+        with session_scope() as session:
+            row = session.get(ReportRow, report_id)
+            sections = list(row.sections or []) if row else []
+        sections.sort(key=lambda s: s.get("section_index", 0))
         return sections
 
     @classmethod
@@ -2268,16 +2204,14 @@ class ReportManager:
         """
         组装完整报告
 
-        从已保存的章节文件组装完整报告，并进行标题清理
+        从已保存的章节组装完整报告，并进行标题清理
         """
-        cls._get_report_folder(report_id)
-
         # 构建报告头部
         md_content = f"# {outline.title}\n\n"
         md_content += f"> {outline.summary}\n\n"
         md_content += "---\n\n"
 
-        # 按顺序读取所有章节文件
+        # 按顺序读取所有章节
         sections = cls.get_generated_sections(report_id)
         for section_info in sections:
             md_content += section_info["content"]
@@ -2285,10 +2219,10 @@ class ReportManager:
         # 后处理：清理整个报告的标题问题
         md_content = cls._post_process_report(md_content, outline)
 
-        # 保存完整报告
-        full_path = cls._get_report_markdown_path(report_id)
-        with open(full_path, "w", encoding="utf-8") as f:
-            f.write(md_content)
+        # 保存完整报告到 Postgres
+        with session_scope() as session:
+            row = cls._load_row(session, report_id, create=True)
+            row.markdown_content = md_content
 
         logger.info(t("report.fullReportAssembled", reportId=report_id))
         return md_content
@@ -2421,143 +2355,94 @@ class ReportManager:
 
     @classmethod
     def save_report(cls, report: Report) -> None:
-        """保存报告元信息和完整报告"""
-        cls._ensure_report_folder(report.report_id)
-
-        # 保存元信息JSON
-        with open(cls._get_report_path(report.report_id), "w", encoding="utf-8") as f:
-            json.dump(report.to_dict(), f, ensure_ascii=False, indent=2)
-
-        # 保存大纲
-        if report.outline:
-            cls.save_outline(report.report_id, report.outline)
-
-        # 保存完整Markdown报告
-        if report.markdown_content:
-            with open(cls._get_report_markdown_path(report.report_id), "w", encoding="utf-8") as f:
-                f.write(report.markdown_content)
-
+        """保存报告元信息与完整报告到 Postgres（章节/进度等其他字段保留）。"""
+        with session_scope() as session:
+            row = cls._load_row(session, report.report_id, create=True)
+            row.simulation_id = report.simulation_id
+            row.graph_id = report.graph_id
+            row.simulation_requirement = report.simulation_requirement
+            row.status = (
+                report.status.value if isinstance(report.status, ReportStatus) else report.status
+            )
+            if report.outline:
+                row.outline = report.outline.to_dict()
+            if report.markdown_content:
+                row.markdown_content = report.markdown_content
+            if report.created_at:
+                row.created_at = report.created_at
+            row.completed_at = report.completed_at
+            row.error = report.error
         logger.info(t("report.reportSaved", reportId=report.report_id))
 
-    @classmethod
-    def get_report(cls, report_id: str) -> Report | None:
-        """获取报告"""
-        path = cls._get_report_path(report_id)
-
-        if not os.path.exists(path):
-            # 兼容旧格式：检查直接存储在reports目录下的文件
-            old_path = os.path.join(cls.REPORTS_DIR, f"{report_id}.json")
-            if os.path.exists(old_path):
-                path = old_path
-            else:
-                return None
-
-        with open(path, encoding="utf-8") as f:
-            data = json.load(f)
-
-        # 重建Report对象
+    @staticmethod
+    def _row_to_report(row: ReportRow) -> Report:
         outline = None
-        if data.get("outline"):
-            outline_data = data["outline"]
-            sections = []
-            for s in outline_data.get("sections", []):
-                sections.append(ReportSection(title=s["title"], content=s.get("content", "")))
+        if row.outline:
+            sections = [
+                ReportSection(title=s["title"], content=s.get("content", ""))
+                for s in row.outline.get("sections", [])
+            ]
             outline = ReportOutline(
-                title=outline_data["title"], summary=outline_data["summary"], sections=sections
+                title=row.outline["title"], summary=row.outline["summary"], sections=sections
             )
-
-        # 如果markdown_content为空，尝试从full_report.md读取
-        markdown_content = data.get("markdown_content", "")
-        if not markdown_content:
-            full_report_path = cls._get_report_markdown_path(report_id)
-            if os.path.exists(full_report_path):
-                with open(full_report_path, encoding="utf-8") as f:
-                    markdown_content = f.read()
-
         return Report(
-            report_id=data["report_id"],
-            simulation_id=data["simulation_id"],
-            graph_id=data["graph_id"],
-            simulation_requirement=data["simulation_requirement"],
-            status=ReportStatus(data["status"]),
+            report_id=row.report_id,
+            simulation_id=row.simulation_id,
+            graph_id=row.graph_id,
+            simulation_requirement=row.simulation_requirement,
+            status=ReportStatus(row.status),
             outline=outline,
-            markdown_content=markdown_content,
-            created_at=data.get("created_at", ""),
-            completed_at=data.get("completed_at", ""),
-            error=data.get("error"),
+            markdown_content=row.markdown_content or "",
+            created_at=row.created_at or "",
+            completed_at=row.completed_at or "",
+            error=row.error,
         )
 
     @classmethod
+    def get_report(cls, report_id: str) -> Report | None:
+        """获取报告（Postgres）。"""
+        with session_scope() as session:
+            row = session.get(ReportRow, report_id)
+            return cls._row_to_report(row) if row else None
+
+    @classmethod
     def get_report_by_simulation(cls, simulation_id: str) -> Report | None:
-        """根据模拟ID获取报告"""
-        cls._ensure_reports_dir()
-
-        for item in os.listdir(cls.REPORTS_DIR):
-            item_path = os.path.join(cls.REPORTS_DIR, item)
-            # 新格式：文件夹
-            if os.path.isdir(item_path):
-                report = cls.get_report(item)
-                if report and report.simulation_id == simulation_id:
-                    return report
-            # 兼容旧格式：JSON文件
-            elif item.endswith(".json"):
-                report_id = item[:-5]
-                report = cls.get_report(report_id)
-                if report and report.simulation_id == simulation_id:
-                    return report
-
-        return None
+        """根据模拟ID获取报告（取最新一条）。"""
+        with session_scope() as session:
+            row = (
+                session.query(ReportRow)
+                .filter(ReportRow.simulation_id == simulation_id)
+                .order_by(ReportRow.created_at.desc())
+                .first()
+            )
+            return cls._row_to_report(row) if row else None
 
     @classmethod
     def list_reports(cls, simulation_id: str | None = None, limit: int = 50) -> list[Report]:
-        """列出报告"""
-        cls._ensure_reports_dir()
-
-        reports = []
-        for item in os.listdir(cls.REPORTS_DIR):
-            item_path = os.path.join(cls.REPORTS_DIR, item)
-            # 新格式：文件夹
-            if os.path.isdir(item_path):
-                report = cls.get_report(item)
-                if report:
-                    if simulation_id is None or report.simulation_id == simulation_id:
-                        reports.append(report)
-            # 兼容旧格式：JSON文件
-            elif item.endswith(".json"):
-                report_id = item[:-5]
-                report = cls.get_report(report_id)
-                if report:
-                    if simulation_id is None or report.simulation_id == simulation_id:
-                        reports.append(report)
-
-        # 按创建时间倒序
-        reports.sort(key=lambda r: r.created_at, reverse=True)
-
-        return reports[:limit]
+        """列出报告（Postgres，按创建时间倒序）。"""
+        with session_scope() as session:
+            query = session.query(ReportRow)
+            if simulation_id is not None:
+                query = query.filter(ReportRow.simulation_id == simulation_id)
+            rows = query.order_by(ReportRow.created_at.desc()).limit(limit).all()
+            return [cls._row_to_report(r) for r in rows]
 
     @classmethod
     def delete_report(cls, report_id: str) -> bool:
-        """删除报告（整个文件夹）"""
-        import shutil
+        """删除报告记录（Postgres）并清理本地日志文件夹。"""
+        with session_scope() as session:
+            row = session.get(ReportRow, report_id)
+            if row is None:
+                return False
+            session.delete(row)
+        # 清理本地运行时日志目录（agent_log/console_log），失败忽略
+        try:
+            import shutil
 
-        folder_path = cls._get_report_folder(report_id)
-
-        # 新格式：删除整个文件夹
-        if os.path.exists(folder_path) and os.path.isdir(folder_path):
-            shutil.rmtree(folder_path)
-            logger.info(t("report.reportFolderDeleted", reportId=report_id))
-            return True
-
-        # 兼容旧格式：删除单独的文件
-        deleted = False
-        old_json_path = os.path.join(cls.REPORTS_DIR, f"{report_id}.json")
-        old_md_path = os.path.join(cls.REPORTS_DIR, f"{report_id}.md")
-
-        if os.path.exists(old_json_path):
-            os.remove(old_json_path)
-            deleted = True
-        if os.path.exists(old_md_path):
-            os.remove(old_md_path)
-            deleted = True
-
-        return deleted
+            folder_path = cls._get_report_folder(report_id)
+            if os.path.isdir(folder_path):
+                shutil.rmtree(folder_path)
+        except Exception:
+            pass
+        logger.info(t("report.reportFolderDeleted", reportId=report_id))
+        return True

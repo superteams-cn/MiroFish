@@ -89,3 +89,28 @@ class SimulationRow(Base):
     updated_at: Mapped[str] = mapped_column(String(40), default="")
 
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class ReportRow(Base):
+    """报告记录表（元数据 + 大纲 + 进度 + 章节 + 完整 markdown）。
+
+    生成期的 append 日志（agent_log.jsonl / console_log.txt）仍属运行节点本地。
+    """
+
+    __tablename__ = "reports"
+
+    report_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    simulation_id: Mapped[str] = mapped_column(String(64), index=True, default="")
+    graph_id: Mapped[str] = mapped_column(String(64), default="")
+    simulation_requirement: Mapped[str] = mapped_column(Text, default="")
+
+    status: Mapped[str] = mapped_column(String(32), index=True, default="pending")
+
+    outline: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    sections: Mapped[list] = mapped_column(JSONB, default=list)
+    progress: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    markdown_content: Mapped[str] = mapped_column(Text, default="")
+
+    created_at: Mapped[str] = mapped_column(String(40), default="", index=True)
+    completed_at: Mapped[str] = mapped_column(String(40), default="")
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)

@@ -8,7 +8,6 @@ Report API 路由（FastAPI 版）
 必须声明在 /{report_id} 之前，否则会被动态段捕获。
 """
 
-import os
 import threading
 import traceback
 import uuid
@@ -381,20 +380,20 @@ def download_report(report_id: str):
         if not report:
             return _error(t("api.reportNotFound", id=report_id), 404)
 
-        md_path = ReportManager._get_report_markdown_path(report_id)
+        # markdown 内容存于 Postgres，写入临时文件后下载
+        markdown = report.markdown_content or ""
+        if not markdown:
+            assembled = ReportManager.get_generated_sections(report_id)
+            markdown = "\n\n".join(s.get("content", "") for s in assembled)
 
-        if not os.path.exists(md_path):
-            # 如果 MD 文件不存在，生成一个临时文件
-            import tempfile
+        import tempfile
 
-            with tempfile.NamedTemporaryFile(
-                mode="w", suffix=".md", delete=False, encoding="utf-8"
-            ) as f:
-                f.write(report.markdown_content)
-                temp_path = f.name
-            return FileResponse(temp_path, filename=f"{report_id}.md", media_type="text/markdown")
-
-        return FileResponse(md_path, filename=f"{report_id}.md", media_type="text/markdown")
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".md", delete=False, encoding="utf-8"
+        ) as f:
+            f.write(markdown)
+            temp_path = f.name
+        return FileResponse(temp_path, filename=f"{report_id}.md", media_type="text/markdown")
 
     except Exception as e:
         logger.error(f"下载报告失败: {str(e)}")
@@ -442,20 +441,18 @@ def get_report_sections(report_id: str):
 def get_single_section(report_id: str, section_index: int):
     """获取单个章节内容。"""
     try:
-        section_path = ReportManager._get_section_path(report_id, section_index)
+        sections = ReportManager.get_generated_sections(report_id)
+        match = next((s for s in sections if s.get("section_index") == section_index), None)
 
-        if not os.path.exists(section_path):
+        if match is None:
             return _error(t("api.sectionNotFound", index=f"{section_index:02d}"), 404)
-
-        with open(section_path, encoding="utf-8") as f:
-            content = f.read()
 
         return {
             "success": True,
             "data": {
-                "filename": f"section_{section_index:02d}.md",
+                "filename": match.get("filename", f"section_{section_index:02d}.md"),
                 "section_index": section_index,
-                "content": content,
+                "content": match.get("content", ""),
             },
         }
     except Exception as e:
