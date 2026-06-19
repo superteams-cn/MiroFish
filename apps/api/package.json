@@ -10,7 +10,7 @@
     "lint": "uv run ruff check app",
     "lint:fix": "uv run ruff check app --fix",
     "format": "uv run ruff format app",
-    "typecheck:mypy": "uv run mypy app",
+    "typecheck": "uv run mypy app",
     "test": "uv run pytest"
   }
 }

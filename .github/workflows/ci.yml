@@ -46,5 +46,7 @@ jobs:
         run: uv run ruff check app
       - name: Ruff 格式检查
         run: uv run ruff format app --check
+      - name: mypy 类型检查（Web 层渐进门禁）
+        run: uv run mypy app
       - name: pytest
         run: uv run pytest

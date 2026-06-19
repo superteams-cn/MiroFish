@@ -168,7 +168,7 @@ export default function ProcessPage() {
             }
           } else if (task.status === 'failed') {
             stopPolling()
-            setError(task.error)
+            setError(task.error ?? '')
             addLog(`Graph build task failed: ${task.error}`)
           }
         }
@@ -203,7 +203,7 @@ export default function ProcessPage() {
         startGraphPolling()
         startPollingTask(res.data.task_id)
       } else {
-        setError(res.error)
+        setError(res.error ?? '')
         addLog(`Error starting build: ${res.error}`)
       }
     } catch (err) {
@@ -249,7 +249,7 @@ export default function ProcessPage() {
       addLog(`Loading project ${projectIdRef.current}...`)
       const res = await getProject(projectIdRef.current)
       if (!res.success) {
-        setError(res.error)
+        setError(res.error ?? '')
         return
       }
       setProjectData(res.data)

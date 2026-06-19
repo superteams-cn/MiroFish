@@ -18,6 +18,9 @@ interface Step5Props {
 
 type TargetKey = 'report_agent' | `agent_${number}`
 
+/** 采访接口对单个 Agent 的回复 */
+type AgentAnswer = { response?: string; answer?: string }
+
 /** 步骤五：深度交互（与 ReportAgent / 单个 Agent 对话 + 多 Agent 问卷）。 */
 export function Step5Interaction({ reportId, simulationId, addLog }: Step5Props) {
   const { t } = useTranslation()
@@ -118,7 +121,7 @@ export function Step5Interaction({ reportId, simulationId, addLog }: Step5Props)
         })
         if (!res.success || !res.data) throw new Error(res.error || t('step5.requestFailed'))
         const resultData = res.data.result || res.data
-        const dict = resultData.results || resultData
+        const dict = (resultData.results || resultData) as Record<string, AgentAnswer>
         const agentResult =
           dict[`reddit_${idx}`] || dict[`twitter_${idx}`] || Object.values(dict)[0]
         answer = (agentResult?.response || agentResult?.answer) ?? t('step5.noResponse')
@@ -149,7 +152,7 @@ export function Step5Interaction({ reportId, simulationId, addLog }: Step5Props)
       const res = await interviewAgents({ simulation_id: simulationId, interviews })
       if (!res.success || !res.data) throw new Error(res.error || t('step5.requestFailed'))
       const resultData = res.data.result || res.data
-      const dict = resultData.results || resultData
+      const dict = (resultData.results || resultData) as Record<string, AgentAnswer>
       const list: SurveyResult[] = interviews.map(({ agent_id }) => {
         const agent = profiles[agent_id]
         const agentResult = dict[`reddit_${agent_id}`] || dict[`twitter_${agent_id}`]

@@ -1209,8 +1209,12 @@ def interview_all_agents(req: InterviewAllRequest):
         # 优化 prompt，添加前缀避免 Agent 调用工具
         optimized_prompt = optimize_interview_prompt(prompt)
 
+        # platform 为可选；SimulationRunner 运行期接受 None（其签名标注偏紧，故定向忽略）
         result = SimulationRunner.interview_all_agents(
-            simulation_id=simulation_id, prompt=optimized_prompt, platform=platform, timeout=timeout
+            simulation_id=simulation_id,
+            prompt=optimized_prompt,
+            platform=platform,  # type: ignore[arg-type]
+            timeout=timeout,
         )
 
         return {"success": result.get("success", False), "data": result}
@@ -1242,8 +1246,12 @@ def get_interview_history(req: InterviewHistoryRequest):
         if not simulation_id:
             return _error(t("api.requireSimulationId"), 400)
 
+        # platform/agent_id 为可选；运行期接受 None（service 签名偏紧，定向忽略）
         history = SimulationRunner.get_interview_history(
-            simulation_id=simulation_id, platform=platform, agent_id=agent_id, limit=limit
+            simulation_id=simulation_id,
+            platform=platform,  # type: ignore[arg-type]
+            agent_id=agent_id,
+            limit=limit,
         )
 
         return {"success": True, "data": {"count": len(history), "history": history}}

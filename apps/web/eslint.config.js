@@ -23,8 +23,8 @@ export default tseslint.config(
       ...reactHooks.configs.recommended.rules,
       ...jsxA11y.flatConfigs.recommended.rules,
       'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
-      // 渐进收紧：any 暂为警告，后续 P1 清零后改为 error
-      '@typescript-eslint/no-explicit-any': 'warn',
+      // P1 已清零 any，锁定为 error 防止回潮
+      '@typescript-eslint/no-explicit-any': 'error',
       '@typescript-eslint/no-unused-vars': [
         'error',
         { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },

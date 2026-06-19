@@ -221,7 +221,7 @@ export function Step2EnvSetup({
           lastMsg.current = logKey
           const stageInfo = `[${detail.stage_index}/${detail.total_stages}]`
           addLog(
-            detail.total_items > 0
+            (detail.total_items ?? 0) > 0
               ? `${stageInfo} ${detail.current_stage_name}: ${detail.current_item}/${detail.total_items} - ${detail.item_description}`
               : `${stageInfo} ${detail.current_stage_name}: ${detail.item_description}`,
           )
@@ -272,8 +272,8 @@ export function Step2EnvSetup({
           await loadPreparedData()
           return
         }
-        taskIdRef.current = res.data.task_id
-        setTaskId(res.data.task_id)
+        taskIdRef.current = res.data.task_id ?? null
+        setTaskId(res.data.task_id ?? null)
         addLog(t('log.prepareTaskStarted'))
         addLog(t('log.prepareTaskId', { taskId: res.data.task_id }))
         if (res.data.expected_entities_count) {

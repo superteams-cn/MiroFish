@@ -309,7 +309,7 @@ def check_report_status(simulation_id: str):
         report_id = report.report_id if report else None
 
         # 只有报告完成后才解锁 interview
-        interview_unlocked = has_report and report.status == ReportStatus.COMPLETED
+        interview_unlocked = report is not None and report.status == ReportStatus.COMPLETED
 
         return {
             "success": True,

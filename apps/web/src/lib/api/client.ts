@@ -1,5 +1,7 @@
-import axios from 'axios'
+import axios, { type AxiosRequestConfig } from 'axios'
 import i18n from '@/i18n'
+
+import type { ApiEnvelope } from './types'
 
 // 创建 axios 实例
 const service = axios.create({
@@ -61,6 +63,15 @@ export async function requestWithRetry<T>(
   }
   // 理论上不可达
   throw new Error('requestWithRetry: unreachable')
+}
+
+// 响应拦截器已把信封解包，故以下助手在运行期 resolve 为 ApiEnvelope<T>。
+// 用 `unknown` 中转完成类型断言，避免在每个调用点重复书写。
+export const http = {
+  get: <T>(url: string, config?: AxiosRequestConfig): Promise<ApiEnvelope<T>> =>
+    service.get(url, config) as unknown as Promise<ApiEnvelope<T>>,
+  post: <T>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<ApiEnvelope<T>> =>
+    service.post(url, data, config) as unknown as Promise<ApiEnvelope<T>>,
 }
 
 export default service

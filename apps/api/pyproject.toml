@@ -78,7 +78,19 @@ ignore_missing_imports = true   # 第三方(camel/llama-index 等)无类型存�
 disallow_untyped_defs = false   # 渐进式：先不强制全量注解
 warn_unused_ignores = true
 warn_redundant_casts = true
+follow_imports = "silent"       # 仅报告被显式检查文件的错误（导入的模块静默）
 exclude = ["scripts/", "\\.venv/"]
+
+# 渐进式收紧：graph/report 路由 + schemas/deps/main/config 已纳入门禁；
+# 遗留 service/model/util 层与体量较大的 simulation 路由暂忽略，后续逐模块清理后移出。
+[[tool.mypy.overrides]]
+module = [
+    "app.services.*",
+    "app.models.*",
+    "app.utils.*",
+    "app.routers.simulation",
+]
+ignore_errors = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
