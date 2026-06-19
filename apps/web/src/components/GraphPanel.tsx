@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import * as d3 from 'd3'
-import { RefreshCw, Maximize2, X, Network, Tag, ChevronDown } from 'lucide-react'
+import { RefreshCw, Maximize2, X, Network, Tag, ChevronDown, Info } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/common/EmptyState'
@@ -128,6 +128,14 @@ export function GraphPanel({
   const containerRef = useRef<HTMLDivElement>(null)
   const [selected, setSelected] = useState<Selected>(null)
   const [expandedLoops, setExpandedLoops] = useState<Set<string>>(new Set())
+
+  // 模拟结束提示：监听 isSimulating 由 true → false 的跳变
+  const [showFinishedHint, setShowFinishedHint] = useState(false)
+  const wasSimulatingRef = useRef(false)
+  useEffect(() => {
+    if (wasSimulatingRef.current && !isSimulating) setShowFinishedHint(true)
+    wasSimulatingRef.current = !!isSimulating
+  }, [isSimulating])
 
   const nodeCount = graphData?.nodes?.length ?? 0
   const edgeCount = graphData?.edges?.length ?? 0
@@ -722,6 +730,21 @@ export function GraphPanel({
         </div>
       )}
 
+      {/* 模拟结束提示（可关闭） */}
+      {!hint && showFinishedHint && (
+        <div className="bg-background/95 absolute bottom-4 left-1/2 z-10 flex max-w-[90%] -translate-x-1/2 items-center gap-2 rounded-full border px-4 py-2 text-xs shadow-lg backdrop-blur">
+          <Info className="h-3.5 w-3.5 shrink-0 text-amber-500" />
+          <span>{t('graph.pendingContentHint')}</span>
+          <button
+            onClick={() => setShowFinishedHint(false)}
+            title={t('graph.closeHint')}
+            className="text-muted-foreground hover:text-foreground -mr-1 ml-1 shrink-0"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
+
       {/* 空状态 */}
       {!hasData && !loading && (
         <div className="absolute inset-0">
@@ -890,6 +913,23 @@ function EdgeDetail({
                     <Row label={t('graph.fieldFact')} value={str(loop.fact)} />
                     <Row label={t('graph.fieldType')} value={str(loop.fact_type)} />
                     <Row label={t('graph.fieldCreated')} value={formatDateTime(loop.created_at)} />
+                    {(loop.episodes as string[] | undefined)?.length ? (
+                      <div className="mt-2">
+                        <div className="text-muted-foreground mb-1 text-xs font-semibold">
+                          {t('graph.fieldEpisodes')}
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {(loop.episodes as string[]).map((ep) => (
+                            <span
+                              key={ep}
+                              className="bg-background rounded border px-1.5 py-0.5 font-mono text-[10px]"
+                            >
+                              {ep}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
                 )}
               </div>

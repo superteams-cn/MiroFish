@@ -1,4 +1,17 @@
 import { useTranslation } from 'react-i18next'
+import {
+  PenLine,
+  Quote,
+  Repeat2,
+  Heart,
+  MessageSquare,
+  Search,
+  UserPlus,
+  ArrowBigUp,
+  ArrowBigDown,
+  MinusCircle,
+  type LucideIcon,
+} from 'lucide-react'
 
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { cn } from '@/lib/utils'
@@ -18,11 +31,39 @@ const TYPE_LABELS: Record<string, string> = {
   DOWNVOTE_POST: 'DOWNVOTE',
 }
 
+/** 动作类型徽章配色，按旧版语义分类：发帖 / 评论 / 互动 / 元操作 / 空闲。 */
 const TYPE_COLORS: Record<string, string> = {
+  // 发帖类
   CREATE_POST: 'bg-brand text-white',
   QUOTE_POST: 'bg-brand text-white',
+  // 评论类
   CREATE_COMMENT: 'bg-blue-500 text-white',
-  DO_NOTHING: 'bg-muted text-muted-foreground',
+  LIKE_COMMENT: 'bg-blue-500/15 text-blue-600',
+  // 互动类
+  REPOST: 'bg-secondary text-secondary-foreground',
+  LIKE_POST: 'bg-rose-500/15 text-rose-600',
+  UPVOTE_POST: 'bg-emerald-500/15 text-emerald-600',
+  DOWNVOTE_POST: 'bg-amber-500/15 text-amber-600',
+  // 元操作类
+  FOLLOW: 'bg-muted text-muted-foreground border border-dashed',
+  SEARCH_POSTS: 'bg-muted text-muted-foreground border border-dashed',
+  // 空闲
+  DO_NOTHING: 'bg-muted text-muted-foreground opacity-60',
+}
+
+/** 动作类型图标（与旧版正文图标对齐）。 */
+const TYPE_ICONS: Record<string, LucideIcon> = {
+  CREATE_POST: PenLine,
+  QUOTE_POST: Quote,
+  REPOST: Repeat2,
+  LIKE_POST: Heart,
+  CREATE_COMMENT: MessageSquare,
+  LIKE_COMMENT: Heart,
+  SEARCH_POSTS: Search,
+  FOLLOW: UserPlus,
+  UPVOTE_POST: ArrowBigUp,
+  DOWNVOTE_POST: ArrowBigDown,
+  DO_NOTHING: MinusCircle,
 }
 
 function label(type?: string) {
@@ -64,6 +105,8 @@ export function ActionCard({
   const { t } = useTranslation()
   const args = action.action_args || {}
   const type = action.action_type
+  const TypeIcon = type ? TYPE_ICONS[type] : undefined
+  const isTwitter = action.platform === 'twitter'
 
   return (
     <div className={cn(variant === 'list' && 'relative pl-6')}>
@@ -71,23 +114,41 @@ export function ActionCard({
         <span
           className={cn(
             'border-background absolute left-0 top-2 h-2.5 w-2.5 rounded-full border-2',
-            action.platform === 'twitter' ? 'bg-sky-500' : 'bg-orange-500',
+            isTwitter ? 'bg-sky-500' : 'bg-orange-500',
           )}
         />
       )}
       <div className="bg-card rounded-md border p-3">
-        <div className="mb-2 flex items-center justify-between">
-          <div className="flex items-center gap-2">
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-2">
             <Avatar className="h-6 w-6">
               <AvatarFallback className="text-[10px]">
                 {(action.agent_name || 'A')[0]}
               </AvatarFallback>
             </Avatar>
-            <span className="text-xs font-semibold">{action.agent_name}</span>
+            <span className="truncate text-xs font-semibold">{action.agent_name}</span>
           </div>
-          <span className={cn('rounded px-1.5 py-0.5 text-[10px] font-semibold', badgeColor(type))}>
-            {label(type)}
-          </span>
+          <div className="flex shrink-0 items-center gap-1.5">
+            {action.platform && (
+              <span
+                className={cn(
+                  'rounded px-1.5 py-0.5 text-[9px] font-bold uppercase',
+                  isTwitter ? 'bg-sky-500/15 text-sky-600' : 'bg-orange-500/15 text-orange-600',
+                )}
+              >
+                {isTwitter ? 'X' : 'Reddit'}
+              </span>
+            )}
+            <span
+              className={cn(
+                'inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold',
+                badgeColor(type),
+              )}
+            >
+              {TypeIcon && <TypeIcon className="h-3 w-3" />}
+              {label(type)}
+            </span>
+          </div>
         </div>
 
         <div className="space-y-1.5 text-[11px] leading-relaxed">

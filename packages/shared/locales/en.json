@@ -24,7 +24,9 @@
     "rounds": "rounds",
     "items": "items",
     "files": "files",
-    "systemDashboard": "SYSTEM DASHBOARD"
+    "systemDashboard": "SYSTEM DASHBOARD",
+    "yes": "Yes",
+    "no": "No"
   },
   "errorBoundary": {
     "title": "Something went wrong",
@@ -365,7 +367,13 @@
     "inProgress": "In Progress",
     "statusWaiting": "Waiting",
     "regenerateReport": "Regenerate report",
-    "regenerateReportHint": "Discard the current report and regenerate"
+    "regenerateReportHint": "Discard the current report and regenerate",
+    "llmIteration": "Iteration {{n}}",
+    "llmTools": "Tools",
+    "llmFinal": "Final",
+    "llmFinalHint": "Section \"{{title}}\" content generated",
+    "toolGraphStats": "Graph Stats",
+    "toolEntityQuery": "Entity Query"
   },
   "step5": {
     "interactiveTools": "Interactive Tools",

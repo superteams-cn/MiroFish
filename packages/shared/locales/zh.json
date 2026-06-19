@@ -24,7 +24,9 @@
     "rounds": "轮",
     "items": "个",
     "files": "个文件",
-    "systemDashboard": "系统面板"
+    "systemDashboard": "系统面板",
+    "yes": "是",
+    "no": "否"
   },
   "errorBoundary": {
     "title": "页面出错了",
@@ -365,7 +367,13 @@
     "inProgress": "进行中",
     "statusWaiting": "等待中",
     "regenerateReport": "重新生成报告",
-    "regenerateReportHint": "丢弃当前报告并重新生成"
+    "regenerateReportHint": "丢弃当前报告并重新生成",
+    "llmIteration": "迭代 {{n}}",
+    "llmTools": "工具",
+    "llmFinal": "最终",
+    "llmFinalHint": "章节「{{title}}」内容已生成",
+    "toolGraphStats": "图谱统计",
+    "toolEntityQuery": "实体查询"
   },
   "step5": {
     "interactiveTools": "互动工具",
