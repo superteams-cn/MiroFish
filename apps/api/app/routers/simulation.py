@@ -81,13 +81,9 @@ def optimize_interview_prompt(prompt: str) -> str:
 
 def _check_simulation_prepared(simulation_id: str) -> tuple:
     """
-    检查模拟是否已经准备完成
+    检查模拟是否已经准备完成（基于 Postgres 状态 + 对象存储中的配置）。
 
-    检查条件：
-    1. state.json 存在且 status 为 "ready"
-    2. 必要文件存在：reddit_profiles.json, twitter_profiles.csv, simulation_config.json
-
-    注意：运行脚本(run_*.py)保留在 backend/scripts/ 目录，不再复制到模拟目录
+    判定条件：模拟存在、config_generated=True，且配置可获取（本地或对象存储）。
 
     Args:
         simulation_id: 模拟ID
@@ -95,116 +91,54 @@ def _check_simulation_prepared(simulation_id: str) -> tuple:
     Returns:
         (is_prepared: bool, info: dict)
     """
-    import os
+    simulation_manager = SimulationManager()
 
-    from ..config import Config
+    state = simulation_manager.get_simulation(simulation_id)
+    if state is None:
+        return False, {"reason": "模拟不存在"}
 
-    simulation_dir = os.path.join(Config.OASIS_SIMULATION_DATA_DIR, simulation_id)
+    status = state.status.value
+    config_generated = state.config_generated
+    logger.debug(
+        f"检测模拟准备状态: {simulation_id}, status={status}, config_generated={config_generated}"
+    )
 
-    # 检查目录是否存在
-    if not os.path.exists(simulation_dir):
-        return False, {"reason": "模拟目录不存在"}
-
-    # 必要文件列表（不包括脚本，脚本位于 backend/scripts/）
-    required_files = [
-        "state.json",
-        "simulation_config.json",
-        "reddit_profiles.json",
-        "twitter_profiles.csv",
-    ]
-
-    # 检查文件是否存在
-    existing_files = []
-    missing_files = []
-    for f in required_files:
-        file_path = os.path.join(simulation_dir, f)
-        if os.path.exists(file_path):
-            existing_files.append(f)
-        else:
-            missing_files.append(f)
-
-    if missing_files:
+    prepared_statuses = ["ready", "preparing", "running", "completed", "stopped", "failed"]
+    if not (status in prepared_statuses and config_generated):
+        logger.warning(
+            f"模拟 {simulation_id} 检测结果: 未准备完成 "
+            f"(status={status}, config_generated={config_generated})"
+        )
         return False, {
-            "reason": "缺少必要文件",
-            "missing_files": missing_files,
-            "existing_files": existing_files,
+            "reason": f"状态未就绪或配置未生成: status={status}, config_generated={config_generated}",
+            "status": status,
+            "config_generated": config_generated,
         }
 
-    # 检查 state.json 中的状态
-    state_file = os.path.join(simulation_dir, "state.json")
-    try:
-        import json
+    # 校验配置确实可获取（本地缺失时回退对象存储）
+    if simulation_manager.get_simulation_config(simulation_id) is None:
+        return False, {"reason": "缺少模拟配置 simulation_config.json", "status": status}
 
-        with open(state_file, encoding="utf-8") as f:
-            state_data = json.load(f)
+    # preparing 但配置已生成 → 自动置为 ready
+    if status == "preparing":
+        try:
+            state.status = SimulationStatus.READY
+            simulation_manager._save_simulation_state(state)
+            status = "ready"
+            logger.info(f"自动更新模拟状态: {simulation_id} preparing -> ready")
+        except Exception as e:
+            logger.warning(f"自动更新状态失败: {e}")
 
-        status = state_data.get("status", "")
-        config_generated = state_data.get("config_generated", False)
-
-        # 详细日志
-        logger.debug(
-            f"检测模拟准备状态: {simulation_id}, status={status}, config_generated={config_generated}"
-        )
-
-        # 如果 config_generated=True 且文件存在，认为准备完成
-        # 以下状态都说明准备工作已完成：
-        # - ready: 准备完成，可以运行
-        # - preparing: 如果 config_generated=True 说明已完成
-        # - running: 正在运行，说明准备早就完成了
-        # - completed: 运行完成，说明准备早就完成了
-        # - stopped: 已停止，说明准备早就完成了
-        # - failed: 运行失败（但准备是完成的）
-        prepared_statuses = ["ready", "preparing", "running", "completed", "stopped", "failed"]
-        if status in prepared_statuses and config_generated:
-            # 获取文件统计信息
-            profiles_file = os.path.join(simulation_dir, "reddit_profiles.json")
-            os.path.join(simulation_dir, "simulation_config.json")
-
-            profiles_count = 0
-            if os.path.exists(profiles_file):
-                with open(profiles_file, encoding="utf-8") as f:
-                    profiles_data = json.load(f)
-                    profiles_count = len(profiles_data) if isinstance(profiles_data, list) else 0
-
-            # 如果状态是 preparing 但文件已完成，自动更新状态为 ready
-            if status == "preparing":
-                try:
-                    state_data["status"] = "ready"
-                    from datetime import datetime
-
-                    state_data["updated_at"] = datetime.now().isoformat()
-                    with open(state_file, "w", encoding="utf-8") as f:
-                        json.dump(state_data, f, ensure_ascii=False, indent=2)
-                    logger.info(f"自动更新模拟状态: {simulation_id} preparing -> ready")
-                    status = "ready"
-                except Exception as e:
-                    logger.warning(f"自动更新状态失败: {e}")
-
-            logger.info(
-                f"模拟 {simulation_id} 检测结果: 已准备完成 (status={status}, config_generated={config_generated})"
-            )
-            return True, {
-                "status": status,
-                "entities_count": state_data.get("entities_count", 0),
-                "profiles_count": profiles_count,
-                "entity_types": state_data.get("entity_types", []),
-                "config_generated": config_generated,
-                "created_at": state_data.get("created_at"),
-                "updated_at": state_data.get("updated_at"),
-                "existing_files": existing_files,
-            }
-        else:
-            logger.warning(
-                f"模拟 {simulation_id} 检测结果: 未准备完成 (status={status}, config_generated={config_generated})"
-            )
-            return False, {
-                "reason": f"状态不在已准备列表中或config_generated为false: status={status}, config_generated={config_generated}",
-                "status": status,
-                "config_generated": config_generated,
-            }
-
-    except Exception as e:
-        return False, {"reason": f"读取状态文件失败: {str(e)}"}
+    logger.info(f"模拟 {simulation_id} 检测结果: 已准备完成 (status={status})")
+    return True, {
+        "status": status,
+        "entities_count": state.entities_count,
+        "profiles_count": state.profiles_count,
+        "entity_types": state.entity_types,
+        "config_generated": config_generated,
+        "created_at": state.created_at,
+        "updated_at": state.updated_at,
+    }
 
 
 def _get_report_id_for_simulation(simulation_id: str) -> str:
@@ -1421,11 +1355,12 @@ def get_simulation_profiles_realtime(simulation_id: str, platform: str = "reddit
     from datetime import datetime
 
     try:
-        # 获取模拟目录
-        sim_dir = os.path.join(Config.OASIS_SIMULATION_DATA_DIR, simulation_id)
-
-        if not os.path.exists(sim_dir):
+        # 模拟存在性以 Postgres 为准（本地目录可能不在当前节点）
+        sim_state = SimulationManager().get_simulation(simulation_id)
+        if sim_state is None:
             return _error(t("api.simulationNotFound", id=simulation_id), 404)
+
+        sim_dir = os.path.join(Config.OASIS_SIMULATION_DATA_DIR, simulation_id)
 
         # 确定文件路径
         if platform == "reddit":
@@ -1455,20 +1390,9 @@ def get_simulation_profiles_realtime(simulation_id: str, platform: str = "reddit
                 logger.warning(f"读取 profiles 文件失败（可能正在写入中）: {e}")
                 profiles = []
 
-        # 检查是否正在生成（通过 state.json 判断）
-        is_generating = False
-        total_expected = None
-
-        state_file = os.path.join(sim_dir, "state.json")
-        if os.path.exists(state_file):
-            try:
-                with open(state_file, encoding="utf-8") as f:
-                    state_data = json.load(f)
-                    status = state_data.get("status", "")
-                    is_generating = status == "preparing"
-                    total_expected = state_data.get("entities_count")
-            except Exception:
-                pass
+        # 是否正在生成（以 Postgres 状态为准）
+        is_generating = sim_state.status.value == "preparing"
+        total_expected = sim_state.entities_count or None
 
         return {
             "success": True,
@@ -1502,11 +1426,12 @@ def get_simulation_config_realtime(simulation_id: str):
     """
 
     try:
-        # 获取模拟目录
-        sim_dir = os.path.join(Config.OASIS_SIMULATION_DATA_DIR, simulation_id)
-
-        if not os.path.exists(sim_dir):
+        # 模拟存在性以 Postgres 为准
+        sim_state = SimulationManager().get_simulation(simulation_id)
+        if sim_state is None:
             return _error(t("api.simulationNotFound", id=simulation_id), 404)
+
+        sim_dir = os.path.join(Config.OASIS_SIMULATION_DATA_DIR, simulation_id)
 
         # 配置文件路径
         config_file = os.path.join(sim_dir, "simulation_config.json")
@@ -1528,30 +1453,16 @@ def get_simulation_config_realtime(simulation_id: str):
                 logger.warning(f"读取 config 文件失败（可能正在写入中）: {e}")
                 config = None
 
-        # 检查是否正在生成（通过 state.json 判断）
-        is_generating = False
+        # 生成状态以 Postgres 为准
+        status = sim_state.status.value
+        is_generating = status == "preparing"
+        config_generated = sim_state.config_generated
+
         generation_stage = None
-        config_generated = False
-
-        state_file = os.path.join(sim_dir, "state.json")
-        if os.path.exists(state_file):
-            try:
-                with open(state_file, encoding="utf-8") as f:
-                    state_data = json.load(f)
-                    status = state_data.get("status", "")
-                    is_generating = status == "preparing"
-                    config_generated = state_data.get("config_generated", False)
-
-                    # 判断当前阶段
-                    if is_generating:
-                        if state_data.get("profiles_generated", False):
-                            generation_stage = "generating_config"
-                        else:
-                            generation_stage = "generating_profiles"
-                    elif status == "ready":
-                        generation_stage = "completed"
-            except Exception:
-                pass
+        if is_generating:
+            generation_stage = "generating_config" if config_generated else "generating_profiles"
+        elif status == "ready":
+            generation_stage = "completed"
 
         # 构建返回数据
         response_data = {
@@ -1592,8 +1503,15 @@ def download_simulation_config(simulation_id: str):
         sim_dir = manager._get_simulation_dir(simulation_id)
         config_path = os.path.join(sim_dir, "simulation_config.json")
 
+        # 本地缺失则从对象存储物化后再下载
         if not os.path.exists(config_path):
-            return _error(t("api.configFileNotFound"), 404)
+            from ..utils import object_store
+
+            raw = object_store.get_bytes(f"simulations/{simulation_id}/simulation_config.json")
+            if raw is None:
+                return _error(t("api.configFileNotFound"), 404)
+            with open(config_path, "wb") as f:
+                f.write(raw)
 
         return FileResponse(
             config_path, filename="simulation_config.json", media_type="application/json"

@@ -98,3 +98,37 @@ def delete_prefix(prefix: str) -> None:
                 to_delete = []
     if to_delete:
         client.delete_objects(Bucket=bucket, Delete={"Objects": to_delete})
+
+
+def upload_file(key: str, local_path: str, content_type: str = "application/octet-stream") -> str:
+    """把本地文件上传到对象存储。"""
+    with open(local_path, "rb") as f:
+        return put_bytes(key, f.read(), content_type=content_type)
+
+
+def download_prefix_to_dir(prefix: str, local_dir: str) -> int:
+    """把某前缀下的所有对象下载到本地目录（保留相对路径）。
+
+    用于「prepare 在 A 节点、start 在 B 节点」时，把模拟所需文件物化到运行节点。
+    返回下载的对象数量。
+    """
+    import os
+
+    client = _get_client()
+    bucket = Config.S3_BUCKET
+    paginator = client.get_paginator("list_objects_v2")
+    count = 0
+    for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+        for obj in page.get("Contents", []) or []:
+            key = obj["Key"]
+            rel = key[len(prefix) :].lstrip("/")
+            if not rel:
+                continue
+            dest = os.path.join(local_dir, rel)
+            os.makedirs(os.path.dirname(dest) or local_dir, exist_ok=True)
+            data = get_bytes(key)
+            if data is not None:
+                with open(dest, "wb") as f:
+                    f.write(data)
+                count += 1
+    return count

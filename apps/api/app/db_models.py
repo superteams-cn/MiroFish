@@ -58,3 +58,34 @@ class TaskRow(Base):
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     task_metadata: Mapped[dict] = mapped_column(JSONB, default=dict)
     progress_detail: Mapped[dict] = mapped_column(JSONB, default=dict)
+
+
+class SimulationRow(Base):
+    """模拟元数据表（运行时产物仍在节点本地，详见 simulation_runner）。"""
+
+    __tablename__ = "simulations"
+
+    simulation_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    project_id: Mapped[str] = mapped_column(String(64), index=True, default="")
+    graph_id: Mapped[str] = mapped_column(String(64), default="")
+
+    enable_twitter: Mapped[bool] = mapped_column(default=True)
+    enable_reddit: Mapped[bool] = mapped_column(default=True)
+
+    status: Mapped[str] = mapped_column(String(32), index=True, default="created")
+
+    entities_count: Mapped[int] = mapped_column(Integer, default=0)
+    profiles_count: Mapped[int] = mapped_column(Integer, default=0)
+    entity_types: Mapped[list] = mapped_column(JSONB, default=list)
+
+    config_generated: Mapped[bool] = mapped_column(default=False)
+    config_reasoning: Mapped[str] = mapped_column(Text, default="")
+
+    current_round: Mapped[int] = mapped_column(Integer, default=0)
+    twitter_status: Mapped[str] = mapped_column(String(32), default="not_started")
+    reddit_status: Mapped[str] = mapped_column(String(32), default="not_started")
+
+    created_at: Mapped[str] = mapped_column(String(40), default="", index=True)
+    updated_at: Mapped[str] = mapped_column(String(40), default="")
+
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)

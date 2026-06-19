@@ -12,6 +12,9 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
+from ..db import session_scope
+from ..db_models import SimulationRow
+from ..utils import object_store
 from ..utils.locale import t
 from ..utils.logger import get_logger
 from .neo4j_entity_reader import Neo4jEntityReader
@@ -114,6 +117,47 @@ class SimulationState:
         }
 
 
+def _row_to_state(row: SimulationRow) -> "SimulationState":
+    return SimulationState(
+        simulation_id=row.simulation_id,
+        project_id=row.project_id,
+        graph_id=row.graph_id,
+        enable_twitter=row.enable_twitter,
+        enable_reddit=row.enable_reddit,
+        status=SimulationStatus(row.status),
+        entities_count=row.entities_count,
+        profiles_count=row.profiles_count,
+        entity_types=row.entity_types or [],
+        config_generated=row.config_generated,
+        config_reasoning=row.config_reasoning,
+        current_round=row.current_round,
+        twitter_status=row.twitter_status,
+        reddit_status=row.reddit_status,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+        error=row.error,
+    )
+
+
+def _apply_state_to_row(state: "SimulationState", row: SimulationRow) -> None:
+    row.project_id = state.project_id
+    row.graph_id = state.graph_id
+    row.enable_twitter = state.enable_twitter
+    row.enable_reddit = state.enable_reddit
+    row.status = state.status.value if isinstance(state.status, SimulationStatus) else state.status
+    row.entities_count = state.entities_count
+    row.profiles_count = state.profiles_count
+    row.entity_types = state.entity_types
+    row.config_generated = state.config_generated
+    row.config_reasoning = state.config_reasoning
+    row.current_round = state.current_round
+    row.twitter_status = state.twitter_status
+    row.reddit_status = state.reddit_status
+    row.created_at = state.created_at
+    row.updated_at = state.updated_at
+    row.error = state.error
+
+
 class SimulationManager:
     """
     模拟管理器
@@ -129,66 +173,47 @@ class SimulationManager:
     SIMULATION_DATA_DIR = os.path.join(os.path.dirname(__file__), "../../uploads/simulations")
 
     def __init__(self):
-        # 确保目录存在
+        # 确保运行时本地目录存在（profiles/config/sqlite/日志等运行产物仍落本地）
         os.makedirs(self.SIMULATION_DATA_DIR, exist_ok=True)
 
-        # 内存中的模拟状态缓存
-        self._simulations: dict[str, SimulationState] = {}
-
     def _get_simulation_dir(self, simulation_id: str) -> str:
-        """获取模拟数据目录"""
+        """获取模拟数据目录（运行时本地工作目录）"""
         sim_dir = os.path.join(self.SIMULATION_DATA_DIR, simulation_id)
         os.makedirs(sim_dir, exist_ok=True)
         return sim_dir
 
+    @staticmethod
+    def _s3_key(simulation_id: str, name: str) -> str:
+        """模拟相关文件在对象存储中的 key。"""
+        return f"simulations/{simulation_id}/{name}"
+
+    def _mirror_to_s3(self, simulation_id: str, filename: str) -> None:
+        """把本地的模拟文件（config/profiles）镜像到对象存储，失败仅告警。"""
+        local_path = os.path.join(self._get_simulation_dir(simulation_id), filename)
+        if not os.path.exists(local_path):
+            return
+        try:
+            object_store.upload_file(self._s3_key(simulation_id, filename), local_path)
+        except Exception as exc:
+            logger.warning(f"镜像模拟文件到对象存储失败 {filename}: {exc}")
+
     def _save_simulation_state(self, state: SimulationState):
-        """保存模拟状态到文件"""
-        sim_dir = self._get_simulation_dir(state.simulation_id)
-        state_file = os.path.join(sim_dir, "state.json")
-
+        """保存模拟状态到 Postgres（upsert）。"""
         state.updated_at = datetime.now().isoformat()
-
-        with open(state_file, "w", encoding="utf-8") as f:
-            json.dump(state.to_dict(), f, ensure_ascii=False, indent=2)
-
-        self._simulations[state.simulation_id] = state
+        with session_scope() as session:
+            row = session.get(SimulationRow, state.simulation_id)
+            if row is None:
+                row = SimulationRow(simulation_id=state.simulation_id)
+                _apply_state_to_row(state, row)
+                session.add(row)
+            else:
+                _apply_state_to_row(state, row)
 
     def _load_simulation_state(self, simulation_id: str) -> SimulationState | None:
-        """从文件加载模拟状态"""
-        if simulation_id in self._simulations:
-            return self._simulations[simulation_id]
-
-        sim_dir = self._get_simulation_dir(simulation_id)
-        state_file = os.path.join(sim_dir, "state.json")
-
-        if not os.path.exists(state_file):
-            return None
-
-        with open(state_file, encoding="utf-8") as f:
-            data = json.load(f)
-
-        state = SimulationState(
-            simulation_id=simulation_id,
-            project_id=data.get("project_id", ""),
-            graph_id=data.get("graph_id", ""),
-            enable_twitter=data.get("enable_twitter", True),
-            enable_reddit=data.get("enable_reddit", True),
-            status=SimulationStatus(data.get("status", "created")),
-            entities_count=data.get("entities_count", 0),
-            profiles_count=data.get("profiles_count", 0),
-            entity_types=data.get("entity_types", []),
-            config_generated=data.get("config_generated", False),
-            config_reasoning=data.get("config_reasoning", ""),
-            current_round=data.get("current_round", 0),
-            twitter_status=data.get("twitter_status", "not_started"),
-            reddit_status=data.get("reddit_status", "not_started"),
-            created_at=data.get("created_at", datetime.now().isoformat()),
-            updated_at=data.get("updated_at", datetime.now().isoformat()),
-            error=data.get("error"),
-        )
-
-        self._simulations[simulation_id] = state
-        return state
+        """从 Postgres 读取模拟状态。"""
+        with session_scope() as session:
+            row = session.get(SimulationRow, simulation_id)
+            return _row_to_state(row) if row else None
 
     def create_simulation(
         self,
@@ -419,6 +444,13 @@ class SimulationManager:
             with open(config_path, "w", encoding="utf-8") as f:
                 f.write(sim_params.to_json())
 
+            # 把准备阶段产物镜像到对象存储，使 start 可在其他节点物化运行
+            self._mirror_to_s3(simulation_id, "simulation_config.json")
+            if state.enable_reddit:
+                self._mirror_to_s3(simulation_id, "reddit_profiles.json")
+            if state.enable_twitter:
+                self._mirror_to_s3(simulation_id, "twitter_profiles.csv")
+
             state.config_generated = True
             state.config_reasoning = sim_params.generation_reasoning
 
@@ -456,22 +488,13 @@ class SimulationManager:
         return self._load_simulation_state(simulation_id)
 
     def list_simulations(self, project_id: str | None = None) -> list[SimulationState]:
-        """列出所有模拟"""
-        simulations = []
-
-        if os.path.exists(self.SIMULATION_DATA_DIR):
-            for sim_id in os.listdir(self.SIMULATION_DATA_DIR):
-                # 跳过隐藏文件（如 .DS_Store）和非目录文件
-                sim_path = os.path.join(self.SIMULATION_DATA_DIR, sim_id)
-                if sim_id.startswith(".") or not os.path.isdir(sim_path):
-                    continue
-
-                state = self._load_simulation_state(sim_id)
-                if state:
-                    if project_id is None or state.project_id == project_id:
-                        simulations.append(state)
-
-        return simulations
+        """列出所有模拟（Postgres，按创建时间倒序）"""
+        with session_scope() as session:
+            query = session.query(SimulationRow)
+            if project_id is not None:
+                query = query.filter(SimulationRow.project_id == project_id)
+            rows = query.order_by(SimulationRow.created_at.desc()).all()
+            return [_row_to_state(r) for r in rows]
 
     def get_profiles(self, simulation_id: str, platform: str = "reddit") -> list[dict[str, Any]]:
         """获取模拟的Agent Profile"""
@@ -482,22 +505,26 @@ class SimulationManager:
         sim_dir = self._get_simulation_dir(simulation_id)
         profile_path = os.path.join(sim_dir, f"{platform}_profiles.json")
 
-        if not os.path.exists(profile_path):
-            return []
+        if os.path.exists(profile_path):
+            with open(profile_path, encoding="utf-8") as f:
+                return json.load(f)
 
-        with open(profile_path, encoding="utf-8") as f:
-            return json.load(f)
+        # 本地缺失则回退对象存储（如运行在 prepare 之外的节点）
+        raw = object_store.get_text(self._s3_key(simulation_id, f"{platform}_profiles.json"))
+        return json.loads(raw) if raw else []
 
     def get_simulation_config(self, simulation_id: str) -> dict[str, Any] | None:
         """获取模拟配置"""
         sim_dir = self._get_simulation_dir(simulation_id)
         config_path = os.path.join(sim_dir, "simulation_config.json")
 
-        if not os.path.exists(config_path):
-            return None
+        if os.path.exists(config_path):
+            with open(config_path, encoding="utf-8") as f:
+                return json.load(f)
 
-        with open(config_path, encoding="utf-8") as f:
-            return json.load(f)
+        # 本地缺失则回退对象存储
+        raw = object_store.get_text(self._s3_key(simulation_id, "simulation_config.json"))
+        return json.loads(raw) if raw else None
 
     def get_run_instructions(self, simulation_id: str) -> dict[str, str]:
         """获取运行说明"""
