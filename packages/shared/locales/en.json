@@ -215,7 +215,8 @@
     "simulationIdLabel": "Simulation ID",
     "taskIdLabel": "Task ID",
     "activityMultiplier": "Activity Multiplier",
-    "personaDimFramework": "Persona Dimensions"
+    "personaDimFramework": "Persona Dimensions",
+    "personaDimEmpty": "No content for this dimension yet"
   },
   "step3": {
     "startGenerateReport": "Generate Report",

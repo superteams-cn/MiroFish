@@ -215,7 +215,8 @@
     "simulationIdLabel": "模拟ID",
     "taskIdLabel": "任务ID",
     "activityMultiplier": "活跃倍率",
-    "personaDimFramework": "人设维度框架"
+    "personaDimFramework": "人设维度框架",
+    "personaDimEmpty": "暂无该维度内容"
   },
   "step3": {
     "startGenerateReport": "开始生成结果报告",

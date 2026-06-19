@@ -13,7 +13,17 @@ export interface Profile {
   country?: string
   mbti?: string
   persona?: string
+  /** 后端产出的结构化人设四维度（可选）；缺省时前端回退到注解式展示 */
+  dimensions?: PersonaDimensions
   [key: string]: unknown
+}
+
+/** 人设四维度结构化内容（来自后端 oasis_profile_generator） */
+export interface PersonaDimensions {
+  experience?: string
+  behavior?: string
+  memory?: string
+  social?: string
 }
 
 /** 时间配置 */
