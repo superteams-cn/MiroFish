@@ -9,7 +9,7 @@
 from flask import Flask
 from flask_cors import CORS
 
-from .api import simulation_bp, report_bp
+from .api import simulation_bp
 
 
 def build_legacy_app() -> Flask:
@@ -23,6 +23,5 @@ def build_legacy_app() -> Flask:
     CORS(app, resources={r"/api/*": {"origins": "*"}})
 
     app.register_blueprint(simulation_bp, url_prefix='/api/simulation')
-    app.register_blueprint(report_bp, url_prefix='/api/report')
 
     return app

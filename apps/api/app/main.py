@@ -21,6 +21,7 @@ from fastapi.middleware.wsgi import WSGIMiddleware
 from .config import Config
 from .utils.logger import setup_logger, get_logger
 from .routers import graph as graph_router
+from .routers import report as report_router
 from .legacy_flask import build_legacy_app
 
 
@@ -62,6 +63,7 @@ def create_app() -> FastAPI:
 
     # 原生 FastAPI 路由（必须在挂载遗留 WSGI 之前注册，以保证优先匹配）
     app.include_router(graph_router.router, prefix="/api/graph", tags=["graph"])
+    app.include_router(report_router.router, prefix="/api/report", tags=["report"])
 
     # 过渡期：将遗留 Flask 蓝图（simulation / report）以 WSGI 形式挂载到根路径。
     # 上面的 FastAPI 路由先注册，故 /api/graph 与 /health 优先命中，其余交给 Flask。
