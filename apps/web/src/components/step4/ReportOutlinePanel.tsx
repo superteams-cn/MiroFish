@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { ChevronDown, Loader2 } from 'lucide-react'
 
 import { Markdown } from '@/components/Markdown'
+import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 import type { ReportOutline } from '@/lib/step4-types'
 
@@ -34,10 +35,22 @@ export function ReportOutlinePanel({
   }
 
   if (!outline) {
+    // 大纲未就绪时用骨架屏占位，比单一 spinner 更贴近最终布局
     return (
-      <div className="text-muted-foreground flex h-full flex-col items-center justify-center gap-3 text-sm">
-        <Loader2 className="h-6 w-6 animate-spin" />
-        {t('step4.generatingReport', { defaultValue: '报告生成中…' })}
+      <div className="mx-auto max-w-3xl space-y-4">
+        <div className="text-muted-foreground flex items-center gap-2 text-sm">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          {t('step4.generatingReport', { defaultValue: '报告生成中…' })}
+        </div>
+        <Skeleton className="h-8 w-2/3" />
+        <Skeleton className="h-4 w-full" />
+        {[0, 1, 2].map((i) => (
+          <div key={i} className="space-y-2 rounded-lg border p-4">
+            <Skeleton className="h-5 w-1/3" />
+            <Skeleton className="h-3 w-full" />
+            <Skeleton className="h-3 w-5/6" />
+          </div>
+        ))}
       </div>
     )
   }

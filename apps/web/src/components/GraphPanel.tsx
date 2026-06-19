@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import * as d3 from 'd3'
-import { RefreshCw, Maximize2, X } from 'lucide-react'
+import { RefreshCw, Maximize2, X, Network } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
+import { EmptyState } from '@/components/common/EmptyState'
 
 // ===== 图谱数据类型（与后端 /api/graph/data 返回结构一致）=====
 export interface GraphNode {
@@ -232,8 +233,12 @@ export function GraphPanel({ graphData, loading, onRefresh, onToggleMaximize }: 
 
       {/* 空状态 */}
       {!hasData && !loading && (
-        <div className="text-muted-foreground absolute inset-0 flex items-center justify-center text-sm">
-          {t('graph.noData', { defaultValue: '暂无图谱数据' })}
+        <div className="absolute inset-0">
+          <EmptyState
+            icon={Network}
+            title={t('graph.noData', { defaultValue: '暂无图谱数据' })}
+            description={t('graph.noDataDesc', { defaultValue: '完成图谱构建后将在此可视化展示' })}
+          />
         </div>
       )}
 
