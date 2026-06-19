@@ -219,8 +219,8 @@ class GraphBuilderService:
         text: str,
         ontology: dict[str, Any],
         graph_name: str = "SuperFish Graph",
-        chunk_size: int = 500,
-        chunk_overlap: int = 50,
+        chunk_size: int = 5000,
+        chunk_overlap: int = 200,
         batch_size: int = 3,
     ) -> str:
         task_id = self.task_manager.create_task(
@@ -255,8 +255,8 @@ class GraphBuilderService:
         text: str,
         ontology: dict[str, Any],
         graph_name: str = "SuperFish Graph",
-        chunk_size: int = 500,
-        chunk_overlap: int = 50,
+        chunk_size: int = 5000,
+        chunk_overlap: int = 200,
         batch_size: int = 3,
         locale: str = "zh",
         graph_id: str | None = None,

@@ -205,7 +205,7 @@ class FileParser:
         return "\n\n".join(all_texts)
 
 
-def split_text_into_chunks(text: str, chunk_size: int = 500, overlap: int = 50) -> list[str]:
+def split_text_into_chunks(text: str, chunk_size: int = 5000, overlap: int = 200) -> list[str]:
     """
     将文本分割成小块
 

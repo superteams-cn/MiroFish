@@ -14,7 +14,7 @@ class TextProcessor:
         return FileParser.extract_from_multiple(file_paths)
 
     @staticmethod
-    def split_text(text: str, chunk_size: int = 500, overlap: int = 50) -> list[str]:
+    def split_text(text: str, chunk_size: int = 5000, overlap: int = 200) -> list[str]:
         """
         分割文本
 

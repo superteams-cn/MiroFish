@@ -35,8 +35,8 @@ class ProjectRow(Base):
     graph_build_task_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     simulation_requirement: Mapped[str | None] = mapped_column(Text, nullable=True)
-    chunk_size: Mapped[int] = mapped_column(Integer, default=500)
-    chunk_overlap: Mapped[int] = mapped_column(Integer, default=50)
+    chunk_size: Mapped[int] = mapped_column(Integer, default=5000)
+    chunk_overlap: Mapped[int] = mapped_column(Integer, default=200)
 
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
