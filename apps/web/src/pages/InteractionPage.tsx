@@ -69,6 +69,7 @@ export default function InteractionPage() {
       graphData={graphData}
       graphLoading={graphLoading}
       onRefreshGraph={refreshGraph}
+      journeyIds={{ reportId }}
       initialViewMode="workbench"
     >
       <Step5Interaction reportId={reportId} simulationId={simulationId} addLog={addLog} />

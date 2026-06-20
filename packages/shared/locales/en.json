@@ -123,7 +123,8 @@
     "jStage1": "Understand your world",
     "jStage2": "Gather the people",
     "jStage3": "Let them play it out",
-    "jStage4": "Give you the answer"
+    "jStage4": "Give you the answer",
+    "jStage5": "Dig deeper"
   },
   "main": {
     "layoutGraph": "Graph",
@@ -138,7 +139,8 @@
     ],
     "noPendingFiles": "No pending files found. Please go back to the home page to re-upload your documents and enter the simulation requirement. (Note: refreshing this page clears the selected files.) Redirecting to home…",
     "buildInterrupted": "The graph build task was lost and the build may have been interrupted (usually due to a backend restart). Please start a new build from the home page.",
-    "stepProgress": "Step {current}/{total}"
+    "stepProgress": "Step {current}/{total}",
+    "goToStage": "Back to “{stage}”"
   },
   "step1": {
     "ontologyGeneration": "Ontology Generation",
@@ -203,6 +205,21 @@
     "relatedTopicsCount": "Reality Seed Related Topics",
     "generatedAgentPersonas": "Generated Agent Personas",
     "unknownProfession": "Unknown profession",
+    "cGathering": "Gathering the virtual people",
+    "cGatheringSub": "AI is giving each one a personality, background and memory…",
+    "cGathered": "Everyone's here",
+    "cGatheredCount": "{count} / {total} gathered",
+    "cGatheredDone": "{count} virtual people are ready",
+    "cNext": "Next: let them play it out",
+    "cCustomRounds": "Custom duration (rounds)",
+    "cRegenerate": "Gather a new batch",
+    "cBackstage": "Behind the scenes",
+    "cBackstageHint": "Environment params, platform algorithms, raw logs — rarely needed",
+    "cStatPeople": "People",
+    "cStatDuration": "Duration",
+    "cStatTopics": "Topics",
+    "cAbout": "What it's about",
+    "cSeeds": "AI's opening posts ({count})",
     "noBio": "No bio available",
     "dualPlatformConfig": "Generate Dual-Platform Config",
     "dualPlatformConfigDesc": "LLM intelligently sets world time flow, recommendation algorithms, each individual's active hours, posting frequency, event triggers, and more based on requirements and reality seeds",
@@ -243,8 +260,8 @@
     "roundsConfigDesc": "SuperFish auto-plans to simulate {hours} real-world hours, each round representing {minutesPerRound} minutes of elapsed time",
     "customToggle": "Custom",
     "roundsUnit": "rounds",
-    "estimatedDuration": "For 100 Agents: est. ~{minutes} minutes",
-    "estimatedDurationFull": "For 100 Agents: est. {minutes} minutes",
+    "estimatedDuration": "~{minutes} min",
+    "estimatedDurationFull": "~{minutes} min",
     "recommendedRounds": "{rounds} (recommended)",
     "customTip": "For first-time runs, we strongly recommend switching to 'Custom Mode' to reduce rounds for a quick preview and lower error risk",
     "backToGraphBuild": "Back to Graph Build",
@@ -278,7 +295,17 @@
     "personaDimFramework": "Persona Dimensions",
     "personaDimEmpty": "No content for this dimension yet",
     "regenerateEnv": "Regenerate environment",
-    "regenerateEnvHint": "Regenerate agent profiles and platform config"
+    "regenerateEnvHint": "Regenerate agent profiles and platform config",
+    "cWorld": "The world they live in",
+    "cPeopleWall": "The {count} people we gathered for you",
+    "cVoiced": "Spoke up",
+    "cAmbient": "Voices already in the air ({count})",
+    "cSaid": "What they already said",
+    "cMetaPrefix": "{count} people · {hours}h simulation · ",
+    "cMetaTopics": "{topics} hot topics",
+    "cBehavior": "Behavior",
+    "cSeeStage": "Details shown on the stage above",
+    "cBack": "Back"
   },
   "step3": {
     "startGenerateReport": "Generate Report",
@@ -539,9 +566,6 @@
     "relatedFiles": "Related Files",
     "noRelatedFiles": "No related files",
     "replayTitle": "Simulation Replay",
-    "step1Button": "Graph Build",
-    "step2Button": "Env Setup",
-    "step4Button": "Analysis Report",
     "replayHint": "Step 3 'Run Simulation' and Step 5 'Deep Interaction' must be started during runtime and do not support history replay",
     "notStarted": "Not started",
     "inProgress": "In progress",
@@ -558,7 +582,8 @@
     "deleteConfirmDesc": "This permanently deletes the project and its graph, simulation and report data. This cannot be undone.",
     "deleteSuccess": "Project deleted",
     "deleteFailed": "Delete failed",
-    "noProjectToDelete": "No associated project to delete"
+    "noProjectToDelete": "No associated project to delete",
+    "continueAt": "Continue from"
   },
   "api": {
     "projectNotFound": "Project not found: {id}",

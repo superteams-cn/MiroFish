@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { getSimulationHistory } from '@/lib/api/simulation'
 import { deleteProject } from '@/lib/api/graph'
+import { recordStage, stageUrl, type JourneyState } from '@/lib/journey'
 import { cn } from '@/lib/utils'
 
 interface HistoryProject {
@@ -313,32 +314,51 @@ export function HistoryDatabase({ onHasProjects }: HistoryDatabaseProps = {}) {
                   </div>
                 )}
               </div>
-              <div className="grid grid-cols-3 gap-2 border-t pt-4">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={!selected.project_id}
-                  onClick={() => navigate(`/process/${selected.project_id}`)}
-                >
-                  {t('history.step1Button')}
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={!selected.simulation_id}
-                  onClick={() => navigate(`/simulation/${selected.simulation_id}`)}
-                >
-                  {t('history.step2Button')}
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={!selected.report_id}
-                  onClick={() => navigate(`/report/${selected.report_id}`)}
-                >
-                  {t('history.step4Button')}
-                </Button>
-              </div>
+              {(() => {
+                // 用与顶部进度条一致的 5 阶段语汇与跳转映射；缺对应 ID 的阶段置灰
+                const j: JourneyState = {
+                  projectId: selected.project_id,
+                  simulationId: selected.simulation_id,
+                  reportId: selected.report_id,
+                  reachedStep: selected.report_id
+                    ? 5
+                    : selected.simulation_id
+                      ? 3
+                      : selected.project_id
+                        ? 1
+                        : 0,
+                }
+                return (
+                  <div className="space-y-2 border-t pt-4">
+                    <div className="text-muted-foreground mb-1 text-[10px] font-semibold uppercase">
+                      {t('history.continueAt')}
+                    </div>
+                    {[1, 2, 3, 4, 5].map((n) => {
+                      const url = stageUrl(n, j)
+                      return (
+                        <Button
+                          key={n}
+                          variant="outline"
+                          size="sm"
+                          disabled={!url}
+                          onClick={() => {
+                            if (!url) return
+                            // 以完整的「已到达阶段」播种旅程，使跳转后进度条上其余已达阶段仍可点
+                            recordStage(j.reachedStep, j)
+                            navigate(url)
+                          }}
+                          className="w-full justify-start gap-2.5"
+                        >
+                          <span className="bg-secondary flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold">
+                            {n}
+                          </span>
+                          {t(`home.jStage${n}`)}
+                        </Button>
+                      )
+                    })}
+                  </div>
+                )
+              })()}
               <Button
                 variant="ghost"
                 size="sm"

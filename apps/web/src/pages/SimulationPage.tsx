@@ -178,6 +178,7 @@ export default function SimulationPage() {
       graphData={graphData}
       graphLoading={graphLoading}
       onRefreshGraph={refreshGraph}
+      journeyIds={{ simulationId, projectId: projectData?.project_id }}
     >
       <Step2EnvSetup
         simulationId={simulationId}

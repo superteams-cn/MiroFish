@@ -354,6 +354,7 @@ export default function ProcessPage() {
       graphData={graphData}
       graphLoading={graphLoading}
       onRefreshGraph={refreshGraph}
+      journeyIds={{ projectId }}
     >
       <Step1GraphBuild
         currentPhase={currentPhase}

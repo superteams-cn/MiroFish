@@ -111,6 +111,7 @@ export default function ReportPage() {
       graphData={graphData}
       graphLoading={graphLoading}
       onRefreshGraph={refreshGraph}
+      journeyIds={{ reportId }}
       initialViewMode="workbench"
     >
       <Step4Report

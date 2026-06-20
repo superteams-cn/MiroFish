@@ -150,7 +150,7 @@ export default function HomePage() {
     <div className="relative">
       {/* 极简悬浮顶栏 */}
       <header className="fixed inset-x-0 top-0 z-30 flex items-center justify-between px-5 py-4 sm:px-8">
-        <Logo className="h-8 w-auto" />
+        <Logo className="h-10 w-auto sm:h-11" />
         <div className="flex items-center gap-2">
           <Button
             variant="secondary"

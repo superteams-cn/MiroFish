@@ -123,16 +123,24 @@
     "jStage1": "读懂你的世界",
     "jStage2": "召集虚拟的人",
     "jStage3": "让他们演一遍",
-    "jStage4": "给你结论"
+    "jStage4": "给你结论",
+    "jStage5": "深入追问"
   },
   "main": {
     "layoutGraph": "图谱",
     "layoutSplit": "双栏",
     "layoutWorkbench": "工作台",
-    "stepNames": ["图谱构建", "环境搭建", "开始模拟", "报告生成", "深度互动"],
+    "stepNames": [
+      "图谱构建",
+      "环境搭建",
+      "开始模拟",
+      "报告生成",
+      "深度互动"
+    ],
     "noPendingFiles": "未找到待处理的文件，请从首页重新上传文档并填写模拟需求。（提示：本页面刷新会丢失已选文件）正在返回首页…",
     "buildInterrupted": "图谱构建任务已丢失，构建可能被中断（通常是后端重启导致）。请从首页重新发起构建。",
-    "stepProgress": "步骤 {current}/{total}"
+    "stepProgress": "步骤 {current}/{total}",
+    "goToStage": "回到「{stage}」"
   },
   "step1": {
     "ontologyGeneration": "本体生成",
@@ -197,6 +205,21 @@
     "relatedTopicsCount": "现实种子当前关联话题数",
     "generatedAgentPersonas": "已生成的 Agent 人设",
     "unknownProfession": "未知职业",
+    "cGathering": "正在召集虚拟的人",
+    "cGatheringSub": "AI 正在为每个人创造性格、背景和记忆……",
+    "cGathered": "虚拟的人都到齐了",
+    "cGatheredCount": "已召集 {count} / {total} 人",
+    "cGatheredDone": "{count} 个虚拟的人已就位",
+    "cNext": "下一步：让他们演一遍",
+    "cCustomRounds": "自定义推演时长（轮）",
+    "cRegenerate": "重新召集一批",
+    "cBackstage": "幕后设置",
+    "cBackstageHint": "环境参数、平台算法、原始日志，一般用不到",
+    "cStatPeople": "虚拟的人",
+    "cStatDuration": "推演时长",
+    "cStatTopics": "热点话题",
+    "cAbout": "这次围绕什么",
+    "cSeeds": "AI 埋下的引子（{count} 条）",
     "noBio": "暂无简介",
     "dualPlatformConfig": "生成双平台模拟配置",
     "dualPlatformConfigDesc": "LLM 根据模拟需求与现实种子，智能设置世界时间流速、推荐算法、每个个体的活跃时间段、发言频率、事件触发等参数",
@@ -237,8 +260,8 @@
     "roundsConfigDesc": "SuperFish 自动规划推演现实 {hours} 小时，每轮代表现实 {minutesPerRound} 分钟时间流逝",
     "customToggle": "自定义",
     "roundsUnit": "轮",
-    "estimatedDuration": "若Agent规模为100：预计耗时约 {minutes} 分钟",
-    "estimatedDurationFull": "若Agent规模为100：预计耗时 {minutes} 分钟",
+    "estimatedDuration": "约 {minutes} 分钟",
+    "estimatedDurationFull": "约 {minutes} 分钟",
     "recommendedRounds": "{rounds} (推荐)",
     "customTip": "若首次运行，强烈建议切换至'自定义模式'减少模拟轮数，以便快速预览效果并降低报错风险",
     "backToGraphBuild": "返回图谱构建",
@@ -272,7 +295,17 @@
     "personaDimFramework": "人设维度框架",
     "personaDimEmpty": "暂无该维度内容",
     "regenerateEnv": "重新生成环境",
-    "regenerateEnvHint": "重新生成 Agent 人设与平台配置"
+    "regenerateEnvHint": "重新生成 Agent 人设与平台配置",
+    "cWorld": "他们生活的世界",
+    "cPeopleWall": "为你召集的 {count} 个人",
+    "cVoiced": "已发声",
+    "cAmbient": "环境中已经流传的声音（{count} 条）",
+    "cSaid": "TA 已经发出的声音",
+    "cMetaPrefix": "{count} 个人 · 推演 {hours} 小时 · ",
+    "cMetaTopics": "{topics} 个热点话题",
+    "cBehavior": "行为画像",
+    "cSeeStage": "详情已在上方展示",
+    "cBack": "上一步"
   },
   "step3": {
     "startGenerateReport": "开始生成结果报告",
@@ -533,9 +566,6 @@
     "relatedFiles": "关联文件",
     "noRelatedFiles": "暂无关联文件",
     "replayTitle": "推演回放",
-    "step1Button": "图谱构建",
-    "step2Button": "环境搭建",
-    "step4Button": "分析报告",
     "replayHint": "Step3「开始模拟」与 Step5「深度互动」需在运行中启动，不支持历史回放",
     "notStarted": "还没开始",
     "inProgress": "进行中",
@@ -552,7 +582,8 @@
     "deleteConfirmDesc": "将永久删除该项目及其图谱、模拟与报告数据,此操作不可恢复。",
     "deleteSuccess": "项目已删除",
     "deleteFailed": "删除失败",
-    "noProjectToDelete": "该记录无关联项目,无法删除"
+    "noProjectToDelete": "该记录无关联项目,无法删除",
+    "continueAt": "从哪一步继续"
   },
   "api": {
     "projectNotFound": "项目不存在: {id}",

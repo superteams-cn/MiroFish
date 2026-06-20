@@ -4,37 +4,26 @@ import { cn } from '@/lib/utils'
 import { STATUS_TEXT } from '@/lib/ui-meta'
 import type { AgentConfig } from '@/lib/step2-types'
 
-/** 单个 Agent 行为配置卡片（活跃时间轴 + 行为参数）。 */
-export function AgentConfigItem({ agent }: { agent: AgentConfig }) {
+/**
+ * 单个「人」的行为画像（活跃时段 + 行为参数），人话化、紧凑，
+ * 用于人物卡片 hover 浮层。数据来自后端 agent_config。
+ */
+export function PersonaBehavior({ agent }: { agent: AgentConfig }) {
   const { t } = useTranslation()
   const sentiment = agent.sentiment_bias ?? 0
 
   return (
-    <div className="bg-card rounded-md border p-3">
-      <div className="mb-3 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className="font-mono text-xs font-bold">Agent {agent.agent_id}</span>
-          <span className="text-muted-foreground text-xs">{agent.entity_name}</span>
-        </div>
-        <div className="flex gap-1">
-          <span className="bg-muted rounded px-1.5 py-0.5 text-[10px]">{agent.entity_type}</span>
-          {agent.stance && (
-            <span className="bg-muted rounded px-1.5 py-0.5 text-[10px]">{agent.stance}</span>
-          )}
-        </div>
-      </div>
-
-      {/* 24 小时活跃时间轴 */}
-      <div className="mb-3">
+    <div className="space-y-3">
+      {/* 24 小时活跃时段 */}
+      <div>
         <span className="text-muted-foreground text-[10px]">{t('step2.activeTimePeriod')}</span>
         <div className="mt-1 flex gap-px">
           {Array.from({ length: 24 }, (_, h) => (
             <div
               key={h}
-              title={`${h}:00`}
               className={cn(
                 'h-3 flex-1 rounded-[1px]',
-                agent.active_hours?.includes(h) ? 'bg-brand' : 'bg-muted',
+                agent.active_hours?.includes(h) ? 'bg-indigo-500' : 'bg-muted',
               )}
             />
           ))}
@@ -60,7 +49,7 @@ export function AgentConfigItem({ agent }: { agent: AgentConfig }) {
           <span className="text-muted-foreground block text-[9px]">{t('step2.activityLevel')}</span>
           <div className="bg-muted mt-1 h-1.5 w-full rounded-full">
             <div
-              className="bg-brand h-full rounded-full"
+              className="h-full rounded-full bg-indigo-500"
               style={{ width: `${(agent.activity_level ?? 0) * 100}%` }}
             />
           </div>
@@ -69,7 +58,7 @@ export function AgentConfigItem({ agent }: { agent: AgentConfig }) {
           <span className="text-muted-foreground block text-[9px]">{t('step2.sentimentBias')}</span>
           <span
             className={cn(
-              'font-mono font-semibold',
+              'font-semibold',
               sentiment > 0
                 ? STATUS_TEXT.success
                 : sentiment < 0
@@ -91,7 +80,7 @@ function Param({ label, value }: { label: string; value: unknown }) {
   return (
     <div>
       <span className="text-muted-foreground block text-[9px]">{label}</span>
-      <span className="font-mono font-semibold">{String(value ?? '-')}</span>
+      <span className="font-semibold">{String(value ?? '-')}</span>
     </div>
   )
 }

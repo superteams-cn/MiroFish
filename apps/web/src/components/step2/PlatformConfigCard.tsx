@@ -1,7 +1,6 @@
 import { useTranslation } from 'react-i18next'
 
 import { StepCard } from '@/components/StepCard'
-import { AgentConfigItem } from './AgentConfigItem'
 import type { PlatformConfig, SimulationConfig } from '@/lib/step2-types'
 
 interface Props {
@@ -59,23 +58,6 @@ export function PlatformConfigCard({ phase, config }: Props) {
 
               {/* 活跃时段分解 */}
               <TimePeriods tc={tc} />
-            </div>
-          )}
-
-          {/* Agent 配置 */}
-          {!!config.agent_configs?.length && (
-            <div>
-              <div className="mb-2 flex items-center justify-between">
-                <span className="text-xs font-semibold">{t('step2.agentConfig')}</span>
-                <span className="bg-muted rounded px-1.5 py-0.5 text-[10px]">
-                  {config.agent_configs.length} {t('common.items')}
-                </span>
-              </div>
-              <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
-                {config.agent_configs.map((agent) => (
-                  <AgentConfigItem key={agent.agent_id} agent={agent} />
-                ))}
-              </div>
             </div>
           )}
 

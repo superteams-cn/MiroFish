@@ -151,6 +151,7 @@ export default function SimulationRunPage() {
       graphData={graphData}
       graphLoading={graphLoading}
       onRefreshGraph={() => refreshGraph(false)}
+      journeyIds={{ simulationId }}
       // 模拟运行时默认 split 视图，左侧图谱可见，实时观察记忆图谱变化
       initialViewMode="split"
     >
