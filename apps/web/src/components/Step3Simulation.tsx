@@ -282,10 +282,15 @@ export function Step3Simulation({
     setIsGeneratingReport(true)
     addLog(t('log.startingReportGen'))
     try {
-      const res = await generateReport({ simulation_id: simulationId, force_regenerate: true })
+      // 不强制重生成：若该模拟已有完成的报告，后端直接返回它 → 仅打开展示
+      const res = await generateReport({ simulation_id: simulationId, force_regenerate: false })
       if (res.success && res.data) {
         const reportId = res.data.report_id
-        addLog(t('log.reportGenTaskStarted', { reportId }))
+        addLog(
+          res.data.already_generated
+            ? t('log.openingExistingReport', { reportId })
+            : t('log.reportGenTaskStarted', { reportId }),
+        )
         navigate(`/report/${reportId}`)
       } else {
         addLog(t('log.reportGenFailed', { error: res.error || t('common.unknownError') }))

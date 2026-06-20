@@ -6,7 +6,7 @@ import { toast } from 'sonner'
 
 import { StepCard } from '@/components/StepCard'
 import { Button } from '@/components/ui/button'
-import { createSimulation } from '@/lib/api/simulation'
+import { createSimulation, listSimulations } from '@/lib/api/simulation'
 import type { ProjectData } from '@/lib/process-types'
 
 interface Props {
@@ -24,6 +24,17 @@ export function CompleteCard({ phase, projectData }: Props) {
     if (!projectData?.project_id || !projectData?.graph_id) return
     setCreating(true)
     try {
+      // 复用：若该项目已创建过模拟，直接进入（仅展示/续做），不重复新建。
+      // 优先已生成配置（可用）的那个，避免落到半成品的 preparing 副本；否则取最新。
+      const existing = await listSimulations(projectData.project_id)
+      if (existing.success && existing.data && existing.data.length > 0) {
+        const sims = existing.data // 后端按 created_at 倒序
+        const target = sims.find((s) => s.config_generated || s.status === 'ready') || sims[0]
+        if (target.simulation_id) {
+          navigate(`/simulation/${target.simulation_id}`)
+          return
+        }
+      }
       const res = await createSimulation({
         project_id: projectData.project_id,
         graph_id: projectData.graph_id,

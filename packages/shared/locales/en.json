@@ -752,6 +752,7 @@
     "reportRequestSent": "Report generation request sent, please wait...",
     "startingReportGen": "Starting report generation...",
     "reportGenTaskStarted": "✓ Report generation task started: {reportId}",
+    "openingExistingReport": "✓ Existing report found, opening directly: {reportId}",
     "reportGenFailed": "✗ Failed to start report generation: {error}",
     "reportGenException": "✗ Report generation error: {error}",
     "step5Init": "Step 5 deep interaction initialized",
