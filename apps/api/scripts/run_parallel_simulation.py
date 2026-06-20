@@ -90,18 +90,20 @@ _project_root = os.path.abspath(os.path.join(_backend_dir, '..'))
 sys.path.insert(0, _scripts_dir)
 sys.path.insert(0, _backend_dir)
 
-# 加载项目根目录的 .env 文件（包含 LLM_API_KEY 等配置）
+# 加载 .env（含 LLM_API_KEY/NEO4J/S3 等配置）。monorepo 重构后 .env 在仓库根
+# （apps/api 的上两级），旧逻辑只往上找一级（apps/）会落空，导致子进程拿不到任何配置
+# → create_model 报"缺少 API Key"。这里按 仓库根 → apps → apps/api 顺序取第一个存在的。
 from dotenv import load_dotenv
-_env_file = os.path.join(_project_root, '.env')
-if os.path.exists(_env_file):
-    load_dotenv(_env_file)
-    print(f"已加载环境配置: {_env_file}")
-else:
-    # 尝试加载 backend/.env
-    _backend_env = os.path.join(_backend_dir, '.env')
-    if os.path.exists(_backend_env):
-        load_dotenv(_backend_env)
-        print(f"已加载环境配置: {_backend_env}")
+_repo_root = os.path.abspath(os.path.join(_backend_dir, '..', '..'))
+for _env_candidate in (
+    os.path.join(_repo_root, '.env'),
+    os.path.join(_project_root, '.env'),
+    os.path.join(_backend_dir, '.env'),
+):
+    if os.path.exists(_env_candidate):
+        load_dotenv(_env_candidate)
+        print(f"已加载环境配置: {_env_candidate}")
+        break
 
 
 class MaxTokensWarningFilter(logging.Filter):

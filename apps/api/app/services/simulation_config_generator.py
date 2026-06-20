@@ -238,7 +238,12 @@ class SimulationConfigGenerator:
         if not self.api_key:
             raise ValueError("LLM_API_KEY 未配置")
 
-        self.client = OpenAI(api_key=self.api_key, base_url=self.base_url)
+        # 设置请求超时，避免单次 LLM 调用挂死把 prepare 流程卡住
+        self.client = OpenAI(
+            api_key=self.api_key,
+            base_url=self.base_url,
+            timeout=settings.llm_request_timeout,
+        )
 
     def generate_config(
         self,

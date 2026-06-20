@@ -36,15 +36,19 @@ _project_root = os.path.abspath(os.path.join(_backend_dir, '..'))
 sys.path.insert(0, _scripts_dir)
 sys.path.insert(0, _backend_dir)
 
-# 加载项目根目录的 .env 文件（包含 LLM_API_KEY 等配置）
+# 加载 .env（含 LLM_API_KEY 等）。monorepo 重构后 .env 在仓库根（apps/api 上两级），
+# 旧逻辑只往上找一级（apps/）会落空，按 仓库根 → apps → apps/api 顺序取第一个存在的。
 from dotenv import load_dotenv
-_env_file = os.path.join(_project_root, '.env')
-if os.path.exists(_env_file):
-    load_dotenv(_env_file)
-else:
-    _backend_env = os.path.join(_backend_dir, '.env')
-    if os.path.exists(_backend_env):
-        load_dotenv(_backend_env)
+_repo_root = os.path.abspath(os.path.join(_backend_dir, '..', '..'))
+for _env_candidate in (
+    os.path.join(_repo_root, '.env'),
+    os.path.join(_project_root, '.env'),
+    os.path.join(_backend_dir, '.env'),
+):
+    if os.path.exists(_env_candidate):
+        load_dotenv(_env_candidate)
+        print(f"已加载环境配置: {_env_candidate}")
+        break
 
 
 import re

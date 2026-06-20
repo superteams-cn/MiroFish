@@ -296,7 +296,15 @@ class OasisProfileGenerator:
         if not self.api_key:
             raise ValueError("LLM_API_KEY 未配置")
 
-        self.client = OpenAI(api_key=self.api_key, base_url=self.base_url)
+        # 单次调用超时（人设为长文本生成，正常也可能 60-90s，settings 默认 120s 留足余量）；
+        # SDK 自带重试关掉（下方 _generate_* 自有重试循环），避免 600s 默认超时×内部重试
+        # 叠加，导致一个挂死的实体把整批人设生成永久卡死、前端一直停在"召集中"。
+        self.client = OpenAI(
+            api_key=self.api_key,
+            base_url=self.base_url,
+            timeout=settings.llm_request_timeout,
+            max_retries=0,
+        )
 
         # Neo4j 客户端用于检索丰富上下文
         self._graph_client = None
