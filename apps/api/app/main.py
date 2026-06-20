@@ -57,9 +57,17 @@ async def lifespan(app: FastAPI):
     SimulationRunner.register_cleanup()
     logger.info("已注册模拟进程清理函数")
 
+    # 对账：接管重启前残留的运行中模拟（孤儿续读监控）、终结已死的运行
+    try:
+        result = SimulationRunner.reconcile_running_simulations()
+        if result.get("adopted") or result.get("finalized"):
+            logger.info(f"模拟对账: {result}")
+    except Exception as exc:
+        logger.warning(f"模拟对账失败（不影响启动）: {exc}")
+
     logger.info("SuperFish Backend 启动完成")
     yield
-    # 关闭阶段：SimulationRunner 通过 atexit 清理，无需额外操作
+    # 关闭阶段：SimulationRunner 通过 atexit/信号「松手」（detach），保留子进程待下次接管
 
 
 def create_app() -> FastAPI:

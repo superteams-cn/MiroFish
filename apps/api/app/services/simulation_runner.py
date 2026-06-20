@@ -7,6 +7,7 @@ import atexit
 import json
 import os
 import signal
+import socket
 import subprocess
 import sys
 import threading
@@ -44,6 +45,7 @@ class RunnerStatus(StrEnum):
     STOPPED = "stopped"
     COMPLETED = "completed"
     FAILED = "failed"
+    INTERRUPTED = "interrupted"  # 进程被外部杀死/崩溃且未跑到 simulation_end（可重新启动）
 
 
 @dataclass
@@ -148,6 +150,19 @@ class SimulationRunState:
     # 进程ID（用于停止）
     process_pid: int | None = None
 
+    # ===== 无状态可恢复（档位 A）相关字段 =====
+    # 进程近似绝对启动时刻（epoch 秒），用于 PID 探活时防 PID 复用误判
+    process_start_time: float | None = None
+    # 动作日志已读字节偏移（持久化，接管时从断点续读，避免重复推送图谱记忆）
+    twitter_log_offset: int = 0
+    reddit_log_offset: int = 0
+    # 监控所有权：哪个进程实例在监控本模拟 + 心跳时间（防多进程重复监控）
+    owner_id: str | None = None
+    owner_heartbeat: float | None = None
+    # 图谱记忆配置（持久化，便于其他进程接管时重建 updater）
+    graph_id: str | None = None
+    graph_memory_enabled: bool = False
+
     def add_action(self, action: AgentAction):
         """添加动作到最近动作列表"""
         self.recent_actions.insert(0, action)
@@ -187,6 +202,14 @@ class SimulationRunState:
             "completed_at": self.completed_at,
             "error": self.error,
             "process_pid": self.process_pid,
+            # 无状态可恢复字段
+            "process_start_time": self.process_start_time,
+            "twitter_log_offset": self.twitter_log_offset,
+            "reddit_log_offset": self.reddit_log_offset,
+            "owner_id": self.owner_id,
+            "owner_heartbeat": self.owner_heartbeat,
+            "graph_id": self.graph_id,
+            "graph_memory_enabled": self.graph_memory_enabled,
         }
 
     def to_detail_dict(self) -> dict[str, Any]:
@@ -225,16 +248,208 @@ class SimulationRunner:
     # 图谱记忆更新配置
     _graph_memory_enabled: dict[str, bool] = {}  # simulation_id -> enabled
 
+    # ===== 无状态可恢复（档位 A）相关 =====
+    # 本进程实例唯一标识（hostname:pid），用于监控所有权归属
+    _instance_id: str | None = None
+    # owner 心跳超时（秒）：超过则视为旧 owner 已失联，可被接管
+    OWNER_TTL = 15.0
+    # 退出/热重载时「松手」标志，让监控线程尽快退出（不杀子进程）
+    _detaching: bool = False
+    _detached: bool = False
+
+    @classmethod
+    def _inst_id(cls) -> str:
+        """本进程实例标识（懒初始化）。"""
+        if cls._instance_id is None:
+            try:
+                host = socket.gethostname()
+            except Exception:
+                host = "host"
+            cls._instance_id = f"{host}:{os.getpid()}"
+        return cls._instance_id
+
+    @staticmethod
+    def _parse_etime(s: str) -> int | None:
+        """解析 `ps -o etime` 的已运行时长 [[dd-]hh:]mm:ss → 秒。"""
+        s = s.strip()
+        if not s:
+            return None
+        days = 0
+        if "-" in s:
+            d, s = s.split("-", 1)
+            days = int(d)
+        parts = [int(x) for x in s.split(":")]
+        if len(parts) == 3:
+            h, m, sec = parts
+        elif len(parts) == 2:
+            h, m, sec = 0, parts[0], parts[1]
+        else:
+            return None
+        return days * 86400 + h * 3600 + m * 60 + sec
+
+    @classmethod
+    def _read_process_start_time(cls, pid: int) -> float | None:
+        """返回进程的近似绝对启动时刻（epoch 秒），失败返回 None。
+
+        用已运行时长反推：start ≈ now - elapsed。同一进程在不同时刻读到的值相差仅
+        秒级，可用于 PID 复用校验（容差 2s）。兼容 Linux（etimes，整数秒）与
+        macOS（etime，格式化时长）。Windows 无 ps → 返回 None，降级为仅 os.kill 探活。
+        """
+        if not pid:
+            return None
+        # Linux: etimes（整数秒）
+        try:
+            out = subprocess.run(
+                ["ps", "-o", "etimes=", "-p", str(pid)], capture_output=True, text=True, timeout=3
+            )
+            s = out.stdout.strip()
+            if s and s.isdigit():
+                return time.time() - int(s)
+        except Exception:
+            pass
+        # macOS/BSD: etime（[[dd-]hh:]mm:ss）
+        try:
+            out = subprocess.run(
+                ["ps", "-o", "etime=", "-p", str(pid)], capture_output=True, text=True, timeout=3
+            )
+            secs = cls._parse_etime(out.stdout)
+            if secs is not None:
+                return time.time() - secs
+        except Exception:
+            pass
+        return None
+
+    @classmethod
+    def _pid_alive(cls, pid: int | None, expected_start: float | None = None) -> bool:
+        """PID 探活 + 防 PID 复用。expected_start 为记录的启动时刻，偏差>2s 视为复用（判死）。"""
+        if not pid:
+            return False
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True  # 进程存在（只是非本用户）
+        except OSError:
+            return False
+        if expected_start is not None:
+            actual = cls._read_process_start_time(pid)
+            if actual is not None and abs(actual - expected_start) > 2.0:
+                return False  # 同 PID 但启动时刻不符 → PID 已被复用
+        return True
+
+    @classmethod
+    def _has_simulation_end(cls, sim_dir: str) -> bool:
+        """检查任一平台 actions.jsonl 是否含 simulation_end 事件（判定是否自然跑完）。"""
+        for platform in ("twitter", "reddit"):
+            log_path = os.path.join(sim_dir, platform, "actions.jsonl")
+            if not os.path.exists(log_path):
+                continue
+            try:
+                with open(log_path, encoding="utf-8") as f:
+                    for line in f:
+                        if '"simulation_end"' in line:
+                            return True
+            except Exception:
+                continue
+        return False
+
+    @classmethod
+    def _try_claim_ownership(cls, simulation_id: str) -> bool:
+        """原子抢占监控所有权（Postgres 行锁 CAS）。返回 True 表示本进程成为 owner。
+
+        允许抢占：无 owner / owner 是自己 / owner 心跳过期（OWNER_TTL）。
+        """
+        now = time.time()
+        inst = cls._inst_id()
+        try:
+            with session_scope() as session:
+                row = session.get(SimulationRunStateRow, simulation_id, with_for_update=True)
+                if row is None:
+                    return False
+                data = dict(row.data)
+                owner = data.get("owner_id")
+                hb = data.get("owner_heartbeat") or 0
+                if owner and owner != inst and (now - hb) < cls.OWNER_TTL:
+                    return False
+                data["owner_id"] = inst
+                data["owner_heartbeat"] = now
+                row.data = data
+                return True
+        except Exception as e:
+            logger.warning(f"抢占监控所有权失败: {simulation_id}, error={e}")
+            return False
+
+    @classmethod
+    def _still_owner(cls, simulation_id: str) -> bool:
+        """读 PG 确认本进程仍是 owner。"""
+        try:
+            with session_scope() as session:
+                row = session.get(SimulationRunStateRow, simulation_id)
+                return bool(row) and (row.data or {}).get("owner_id") == cls._inst_id()
+        except Exception:
+            return True  # 读失败时保守认为仍是 owner，避免误退出
+
+    @classmethod
+    def _release_ownership(cls, simulation_id: str) -> None:
+        """释放所有权（仅当 owner 是自己时清空）。"""
+        inst = cls._inst_id()
+        try:
+            with session_scope() as session:
+                row = session.get(SimulationRunStateRow, simulation_id, with_for_update=True)
+                if row and (row.data or {}).get("owner_id") == inst:
+                    data = dict(row.data)
+                    data["owner_id"] = None
+                    data["owner_heartbeat"] = None
+                    row.data = data
+        except Exception as e:
+            logger.warning(f"释放监控所有权失败: {simulation_id}, error={e}")
+
     @classmethod
     def get_run_state(cls, simulation_id: str) -> SimulationRunState | None:
         """获取运行状态。
 
         拥有子进程的进程（worker/本进程）持有 `_run_states` 里的实时对象；
         其他副本（如另一个 API 进程）则从 Postgres 读取最新快照（不缓存，保证新鲜）。
+
+        返回前做实时校正：若标记 running/starting 但进程已死，则据 actions.jsonl
+        终态回写 completed/interrupted，消除「进程已退出但快照仍 running」的脏状态。
         """
         if simulation_id in cls._run_states:
             return cls._run_states[simulation_id]
-        return cls._load_run_state(simulation_id)
+        state = cls._load_run_state(simulation_id)
+        if state is None:
+            return None
+        return cls._reconcile_state(state)
+
+    @classmethod
+    def _reconcile_state(cls, state: SimulationRunState) -> SimulationRunState:
+        """对从 PG 读出的快照做实时校正：running/starting 但进程已死 → 据日志判终态回写。
+
+        仅校正非本进程拥有的快照（本进程拥有的对象由其监控线程实时维护）。
+        """
+        if state.runner_status not in (RunnerStatus.RUNNING, RunnerStatus.STARTING):
+            return state
+        if cls._pid_alive(state.process_pid, state.process_start_time):
+            return state  # 进程仍活，快照由 owner 监控线程保持新鲜
+
+        # 进程已死但快照仍 running → 据 actions.jsonl 判终态
+        sim_dir = os.path.join(cls.RUN_STATE_DIR, state.simulation_id)
+        if cls._has_simulation_end(sim_dir):
+            state.runner_status = RunnerStatus.COMPLETED
+            if not state.completed_at:
+                state.completed_at = datetime.now().isoformat()
+        else:
+            state.runner_status = RunnerStatus.INTERRUPTED
+        state.twitter_running = False
+        state.reddit_running = False
+        state.owner_id = None
+        state.owner_heartbeat = None
+        try:
+            cls._save_run_state(state)
+        except Exception as e:
+            logger.warning(f"回写校正后的运行状态失败: {state.simulation_id}, error={e}")
+        return state
 
     @classmethod
     def _load_run_state(cls, simulation_id: str) -> SimulationRunState | None:
@@ -269,6 +484,13 @@ class SimulationRunner:
                 completed_at=data.get("completed_at"),
                 error=data.get("error"),
                 process_pid=data.get("process_pid"),
+                process_start_time=data.get("process_start_time"),
+                twitter_log_offset=data.get("twitter_log_offset", 0),
+                reddit_log_offset=data.get("reddit_log_offset", 0),
+                owner_id=data.get("owner_id"),
+                owner_heartbeat=data.get("owner_heartbeat"),
+                graph_id=data.get("graph_id"),
+                graph_memory_enabled=data.get("graph_memory_enabled", False),
             )
 
             # 加载最近动作
@@ -467,7 +689,13 @@ class SimulationRunner:
             cls._stderr_files[simulation_id] = None  # 不再需要单独的 stderr
 
             state.process_pid = process.pid
+            state.process_start_time = cls._read_process_start_time(process.pid)
             state.runner_status = RunnerStatus.RUNNING
+            # 持久化图谱记忆配置 + 抢占监控所有权（便于其他进程接管时重建）
+            state.graph_id = graph_id
+            state.graph_memory_enabled = bool(enable_graph_memory_update)
+            state.owner_id = cls._inst_id()
+            state.owner_heartbeat = time.time()
             cls._processes[simulation_id] = process
             cls._save_run_state(state)
 
@@ -493,7 +721,15 @@ class SimulationRunner:
 
     @classmethod
     def _monitor_simulation(cls, simulation_id: str, locale: str = "zh"):
-        """监控模拟进程，解析动作日志"""
+        """监控模拟进程，解析动作日志。
+
+        可监控两类进程：
+        - 本进程亲自 Popen 的（`_processes` 有句柄）：用 process.poll() 判存活，退出码判终态。
+        - 接管的孤儿（无句柄）：用 PID 探活，据 actions.jsonl 有无 simulation_end 判 completed/interrupted。
+
+        关键：日志读取偏移从持久化的 `*_log_offset` 续读、每 tick 落库，接管时不重读 → 不重复推图谱记忆。
+        若本进程被「松手」（_detaching）或所有权被他人接管，则直接退出而不改终态。
+        """
         set_locale(locale)
         sim_dir = os.path.join(cls.RUN_STATE_DIR, simulation_id)
 
@@ -501,62 +737,106 @@ class SimulationRunner:
         twitter_actions_log = os.path.join(sim_dir, "twitter", "actions.jsonl")
         reddit_actions_log = os.path.join(sim_dir, "reddit", "actions.jsonl")
 
-        process = cls._processes.get(simulation_id)
-        state = cls.get_run_state(simulation_id)
+        process = cls._processes.get(simulation_id)  # 孤儿接管时为 None
+        state = cls._run_states.get(simulation_id) or cls._load_run_state(simulation_id)
 
-        if not process or not state:
+        if not state:
             return
 
-        twitter_position = 0
-        reddit_position = 0
+        # 从持久化偏移续读（接管场景从断点继续；新启动时为 0）
+        twitter_position = state.twitter_log_offset or 0
+        reddit_position = state.reddit_log_offset or 0
+        pid = state.process_pid
+        start_time = state.process_start_time
+
+        def _alive() -> bool:
+            if process is not None:
+                return process.poll() is None
+            return cls._pid_alive(pid, start_time)
 
         try:
-            while process.poll() is None:  # 进程仍在运行
-                # 读取 Twitter 动作日志
+            tick = 0
+            while _alive():
+                if cls._detaching:
+                    # 进程退出/热重载：松手退出，不改终态，交给下次 reconcile 接管
+                    logger.info(f"监控松手退出（进程将退出）: {simulation_id}")
+                    return
+
                 if os.path.exists(twitter_actions_log):
                     twitter_position = cls._read_action_log(
                         twitter_actions_log, twitter_position, state, "twitter"
                     )
-
-                # 读取 Reddit 动作日志
+                    state.twitter_log_offset = twitter_position
                 if os.path.exists(reddit_actions_log):
                     reddit_position = cls._read_action_log(
                         reddit_actions_log, reddit_position, state, "reddit"
                     )
+                    state.reddit_log_offset = reddit_position
 
-                # 更新状态
+                # 刷新所有权心跳后落库
+                state.owner_id = cls._inst_id()
+                state.owner_heartbeat = time.time()
                 cls._save_run_state(state)
+
+                tick += 1
+                # 周期性确认仍是 owner，否则让位退出（避免多进程重复监控/重复推图谱记忆）
+                if tick % 5 == 0 and not cls._still_owner(simulation_id):
+                    logger.info(f"监控所有权已被接管，让位退出: {simulation_id}")
+                    return
+
                 time.sleep(2)
 
-            # 进程结束后，最后读取一次日志
+            # 进程已结束：最后读取一次日志（续偏移）
             if os.path.exists(twitter_actions_log):
-                cls._read_action_log(twitter_actions_log, twitter_position, state, "twitter")
+                twitter_position = cls._read_action_log(
+                    twitter_actions_log, twitter_position, state, "twitter"
+                )
+                state.twitter_log_offset = twitter_position
             if os.path.exists(reddit_actions_log):
-                cls._read_action_log(reddit_actions_log, reddit_position, state, "reddit")
+                reddit_position = cls._read_action_log(
+                    reddit_actions_log, reddit_position, state, "reddit"
+                )
+                state.reddit_log_offset = reddit_position
 
-            # 进程结束
-            exit_code = process.returncode
-
-            if exit_code == 0:
-                state.runner_status = RunnerStatus.COMPLETED
-                state.completed_at = datetime.now().isoformat()
+            # 终态判定
+            if state.runner_status == RunnerStatus.COMPLETED:
+                # _read_action_log 已据 simulation_end 置为 completed
+                if not state.completed_at:
+                    state.completed_at = datetime.now().isoformat()
                 logger.info(f"模拟完成: {simulation_id}")
+            elif process is not None:
+                # 本进程亲自启动：用退出码判定
+                exit_code = process.returncode
+                if exit_code == 0 or cls._has_simulation_end(sim_dir):
+                    state.runner_status = RunnerStatus.COMPLETED
+                    state.completed_at = datetime.now().isoformat()
+                    logger.info(f"模拟完成: {simulation_id}")
+                else:
+                    state.runner_status = RunnerStatus.FAILED
+                    main_log_path = os.path.join(sim_dir, "simulation.log")
+                    error_info = ""
+                    try:
+                        if os.path.exists(main_log_path):
+                            with open(main_log_path, encoding="utf-8") as f:
+                                error_info = f.read()[-2000:]
+                    except Exception:
+                        pass
+                    state.error = f"进程退出码: {exit_code}, 错误: {error_info}"
+                    logger.error(f"模拟失败: {simulation_id}, error={state.error}")
             else:
-                state.runner_status = RunnerStatus.FAILED
-                # 从主日志文件读取错误信息
-                main_log_path = os.path.join(sim_dir, "simulation.log")
-                error_info = ""
-                try:
-                    if os.path.exists(main_log_path):
-                        with open(main_log_path, encoding="utf-8") as f:
-                            error_info = f.read()[-2000:]  # 取最后2000字符
-                except Exception:
-                    pass
-                state.error = f"进程退出码: {exit_code}, 错误: {error_info}"
-                logger.error(f"模拟失败: {simulation_id}, error={state.error}")
+                # 接管的孤儿无退出码：据 simulation_end 判定 completed / interrupted
+                if cls._has_simulation_end(sim_dir):
+                    state.runner_status = RunnerStatus.COMPLETED
+                    state.completed_at = datetime.now().isoformat()
+                    logger.info(f"接管的模拟自然完成: {simulation_id}")
+                else:
+                    state.runner_status = RunnerStatus.INTERRUPTED
+                    logger.warning(f"接管的模拟进程已消失且未跑完，标记中断: {simulation_id}")
 
             state.twitter_running = False
             state.reddit_running = False
+            state.owner_id = None
+            state.owner_heartbeat = None
             cls._save_run_state(state)
 
         except Exception as e:
@@ -575,9 +855,10 @@ class SimulationRunner:
                     logger.error(f"停止图谱记忆更新器失败: {e}")
                 cls._graph_memory_enabled.pop(simulation_id, None)
 
-            # 清理进程资源
+            # 清理进程资源（本进程不再监控此模拟）
             cls._processes.pop(simulation_id, None)
             cls._action_queues.pop(simulation_id, None)
+            cls._monitor_threads.pop(simulation_id, None)
 
             # 关闭日志文件句柄
             if simulation_id in cls._stdout_files:
@@ -733,6 +1014,102 @@ class SimulationRunner:
         return twitter_enabled or reddit_enabled
 
     @classmethod
+    def reconcile_running_simulations(cls, locale: str = "zh") -> dict[str, Any]:
+        """启动时对账：接管孤儿、终结已死的运行。
+
+        扫描 PG 中标记 running/starting 的模拟：
+        - PID 仍存活且本进程未在监控 → 抢占所有权 + 重建图谱 updater + 重起监控线程续读。
+        - PID 已死 → 据 actions.jsonl 判 completed/interrupted 回写。
+
+        在 FastAPI lifespan startup 调用，使「服务重启/热重载」后进行中的模拟自动恢复。
+        """
+        # 新进程生命周期开始：复位松手标志
+        cls._detaching = False
+        cls._detached = False
+
+        adopted, finalized = [], []
+        try:
+            with session_scope() as session:
+                rows = session.query(SimulationRunStateRow).all()
+                ids = [
+                    r.simulation_id
+                    for r in rows
+                    if (r.data or {}).get("runner_status") in ("running", "starting")
+                ]
+        except Exception as e:
+            logger.error(f"对账运行中模拟失败（读取列表）: {e}")
+            return {"adopted": [], "finalized": []}
+
+        for sid in ids:
+            state = cls._load_run_state(sid)
+            if not state:
+                continue
+
+            if cls._pid_alive(state.process_pid, state.process_start_time):
+                # 孤儿仍在跑 → 接管监控
+                if sid in cls._monitor_threads:
+                    continue
+                if not cls._try_claim_ownership(sid):
+                    continue  # 别的进程已接管
+                cls._run_states[sid] = state
+                cls._graph_memory_enabled[sid] = bool(state.graph_memory_enabled)
+                if state.graph_memory_enabled and state.graph_id:
+                    try:
+                        Neo4jGraphMemoryManager.create_updater(sid, state.graph_id)
+                    except Exception as e:
+                        logger.error(f"接管时重建图谱记忆更新器失败: {sid}, error={e}")
+                th = threading.Thread(
+                    target=cls._monitor_simulation, args=(sid, locale), daemon=True
+                )
+                th.start()
+                cls._monitor_threads[sid] = th
+                adopted.append(sid)
+                logger.info(f"已接管运行中的模拟: {sid}, pid={state.process_pid}")
+            else:
+                # 进程已死 → 据日志终结
+                sim_dir = os.path.join(cls.RUN_STATE_DIR, sid)
+                if cls._has_simulation_end(sim_dir):
+                    state.runner_status = RunnerStatus.COMPLETED
+                    if not state.completed_at:
+                        state.completed_at = datetime.now().isoformat()
+                else:
+                    state.runner_status = RunnerStatus.INTERRUPTED
+                state.twitter_running = False
+                state.reddit_running = False
+                state.owner_id = None
+                state.owner_heartbeat = None
+                cls._save_run_state(state)
+                finalized.append(sid)
+                logger.info(f"终结已死的模拟: {sid} -> {state.runner_status.value}")
+
+        if adopted or finalized:
+            logger.info(f"模拟对账完成: 接管={adopted}, 终结={finalized}")
+        return {"adopted": adopted, "finalized": finalized}
+
+    @classmethod
+    def _kill_pid_group(cls, pid: int, timeout: int = 8) -> None:
+        """无 Popen 句柄时按 PID 杀进程组（start_new_session 保证 PID==PGID）。"""
+        if IS_WINDOWS:
+            subprocess.run(
+                ["taskkill", "/F", "/T", "/PID", str(pid)], capture_output=True, timeout=10
+            )
+            return
+        try:
+            pgid = os.getpgid(pid)
+        except ProcessLookupError:
+            return
+        os.killpg(pgid, signal.SIGTERM)
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            if not cls._pid_alive(pid):
+                return
+            time.sleep(0.3)
+        try:
+            os.killpg(pgid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+
+    @classmethod
     def _terminate_process(cls, process: subprocess.Popen, simulation_id: str, timeout: int = 10):
         """
         跨平台终止进程及其子进程
@@ -802,6 +1179,7 @@ class SimulationRunner:
         # 终止进程
         process = cls._processes.get(simulation_id)
         if process and process.poll() is None:
+            # 本进程亲自启动的：用 Popen 句柄终止进程组
             try:
                 cls._terminate_process(process, simulation_id)
             except ProcessLookupError:
@@ -815,11 +1193,20 @@ class SimulationRunner:
                     process.wait(timeout=5)
                 except Exception:
                     process.kill()
+        elif cls._pid_alive(state.process_pid, state.process_start_time):
+            # 孤儿（无本进程句柄，如重启后接管的）：按 PID 杀进程组
+            logger.info(f"按 PID 终止孤儿模拟: {simulation_id}, pid={state.process_pid}")
+            try:
+                cls._kill_pid_group(state.process_pid)
+            except Exception as e:
+                logger.error(f"按 PID 终止失败: {simulation_id}, error={e}")
 
         state.runner_status = RunnerStatus.STOPPED
         state.twitter_running = False
         state.reddit_running = False
         state.completed_at = datetime.now().isoformat()
+        state.owner_id = None
+        state.owner_heartbeat = None
         cls._save_run_state(state)
 
         # 停止图谱记忆更新器
@@ -1204,176 +1591,133 @@ class SimulationRunner:
             "errors": errors if errors else None,
         }
 
-    # 防止重复清理的标志
-    _cleanup_done = False
-
     @classmethod
-    def cleanup_all_simulations(cls):
-        """
-        清理所有运行中的模拟进程
+    def detach_all_simulations(cls):
+        """进程退出 / 热重载时调用：「松手」而非「杀掉」。
 
-        在服务器关闭时调用，确保所有子进程被终止
+        档位 A 语义：让 OASIS 子进程作为受控孤儿继续跑完，由下次启动的 reconcile 接管。
+        因此这里只：置松手标志让监控线程尽快退出、释放监控所有权、停本进程的图谱 updater
+        线程、关文件句柄、清本进程内存引用——**不 killpg、不改 runner_status、不动元数据**。
         """
-        # 防止重复清理
-        if cls._cleanup_done:
+        if cls._detached:
             return
-        cls._cleanup_done = True
+        cls._detached = True
+        cls._detaching = True
 
-        # 检查是否有内容需要清理（避免空进程的进程打印无用日志）
-        has_processes = bool(cls._processes)
-        has_updaters = bool(cls._graph_memory_enabled)
+        if not cls._processes and not cls._monitor_threads and not cls._graph_memory_enabled:
+            return  # 本进程没在监控任何模拟，静默返回
 
-        if not has_processes and not has_updaters:
-            return  # 没有需要清理的内容，静默返回
+        logger.info("正在松手退出（保留运行中的模拟子进程，待下次启动接管）...")
 
-        logger.info("正在清理所有模拟进程...")
+        # 释放本进程持有的监控所有权，便于新进程立即接管
+        for sim_id in list(cls._monitor_threads.keys()):
+            try:
+                cls._release_ownership(sim_id)
+            except Exception:
+                pass
 
-        # 首先停止所有图谱记忆更新器（stop_all 内部会打印日志）
+        # 停止本进程的图谱记忆 updater 线程（不影响子进程；接管进程会重建）
         try:
             Neo4jGraphMemoryManager.stop_all()
         except Exception as e:
             logger.error(f"停止图谱记忆更新器失败: {e}")
         cls._graph_memory_enabled.clear()
 
-        # 复制字典以避免在迭代时修改
-        processes = list(cls._processes.items())
-
-        for simulation_id, process in processes:
-            try:
-                if process.poll() is None:  # 进程仍在运行
-                    logger.info(f"终止模拟进程: {simulation_id}, pid={process.pid}")
-
-                    try:
-                        # 使用跨平台的进程终止方法
-                        cls._terminate_process(process, simulation_id, timeout=5)
-                    except (ProcessLookupError, OSError):
-                        # 进程可能已经不存在，尝试直接终止
-                        try:
-                            process.terminate()
-                            process.wait(timeout=3)
-                        except Exception:
-                            process.kill()
-
-                    # 更新运行状态（Postgres）
-                    state = cls.get_run_state(simulation_id)
-                    if state:
-                        state.runner_status = RunnerStatus.STOPPED
-                        state.twitter_running = False
-                        state.reddit_running = False
-                        state.completed_at = datetime.now().isoformat()
-                        state.error = "服务器关闭，模拟被终止"
-                        cls._save_run_state(state)
-
-                    # 同时把模拟元数据状态置为 stopped（Postgres）
-                    try:
-                        from .simulation_manager import SimulationManager, SimulationStatus
-
-                        mgr = SimulationManager()
-                        sim_state = mgr.get_simulation(simulation_id)
-                        if sim_state:
-                            sim_state.status = SimulationStatus.STOPPED
-                            mgr._save_simulation_state(sim_state)
-                            logger.info(f"已更新模拟状态为 stopped: {simulation_id}")
-                    except Exception as state_err:
-                        logger.warning(f"更新模拟状态失败: {simulation_id}, error={state_err}")
-
-            except Exception as e:
-                logger.error(f"清理进程失败: {simulation_id}, error={e}")
-
-        # 清理文件句柄
-        for simulation_id, file_handle in list(cls._stdout_files.items()):
+        # 关闭文件句柄
+        for file_handle in list(cls._stdout_files.values()):
             try:
                 if file_handle:
                     file_handle.close()
             except Exception:
                 pass
         cls._stdout_files.clear()
-
-        for simulation_id, file_handle in list(cls._stderr_files.items()):
-            try:
-                if file_handle:
-                    file_handle.close()
-            except Exception:
-                pass
         cls._stderr_files.clear()
 
-        # 清理内存中的状态
+        # 丢弃本进程的句柄/引用，但**不终止子进程**
         cls._processes.clear()
+        cls._monitor_threads.clear()
         cls._action_queues.clear()
 
-        logger.info("模拟进程清理完成")
+        logger.info("已松手退出")
+
+    @classmethod
+    def cleanup_all_simulations(cls):
+        """运维「全部停止」：真正终止所有正在运行的模拟（含孤儿）并置 stopped。
+
+        与 detach 不同，这里会杀子进程。仅由显式运维入口（如 /admin/stop-all）调用，
+        **不再注册到进程退出钩子**（退出走 detach「松手」）。
+        """
+        # 收集所有运行中的模拟：本进程内存中的 + PG 标记 running/starting 的
+        ids = set(cls._processes.keys())
+        try:
+            with session_scope() as session:
+                rows = session.query(SimulationRunStateRow).all()
+                for r in rows:
+                    if (r.data or {}).get("runner_status") in ("running", "starting"):
+                        ids.add(r.simulation_id)
+        except Exception as e:
+            logger.error(f"读取运行中模拟列表失败: {e}")
+
+        stopped = []
+        for simulation_id in ids:
+            try:
+                state = cls.get_run_state(simulation_id)
+                if state and state.runner_status in (RunnerStatus.RUNNING, RunnerStatus.PAUSED):
+                    cls.stop_simulation(simulation_id)
+                    stopped.append(simulation_id)
+            except Exception as e:
+                logger.error(f"停止模拟失败: {simulation_id}, error={e}")
+
+        logger.info(f"运维全停完成: stopped={stopped}")
+        return {"stopped": stopped}
 
     @classmethod
     def register_cleanup(cls):
-        """
-        注册清理函数
+        """注册进程退出钩子：退出/热重载时「松手」（detach），不杀子进程、不误置 stopped。
 
-        在 Flask 应用启动时调用，确保服务器关闭时清理所有模拟进程
+        在 FastAPI lifespan startup 调用。区别于旧实现：去掉已失效的 Werkzeug 判断
+        （uvicorn 下 WERKZEUG_RUN_MAIN/FLASK_DEBUG 永不存在，旧逻辑形同虚设），
+        并把退出动作从「杀掉」改为「松手」。
         """
         global _cleanup_registered
 
         if _cleanup_registered:
             return
 
-        # Flask debug 模式下，只在 reloader 子进程中注册清理（实际运行应用的进程）
-        # WERKZEUG_RUN_MAIN=true 表示是 reloader 子进程
-        # 如果不是 debug 模式，则没有这个环境变量，也需要注册
-        is_reloader_process = os.environ.get("WERKZEUG_RUN_MAIN") == "true"
-        is_debug_mode = (
-            os.environ.get("FLASK_DEBUG") == "1" or os.environ.get("WERKZEUG_RUN_MAIN") is not None
-        )
-
-        # 在 debug 模式下，只在 reloader 子进程中注册；非 debug 模式下始终注册
-        if is_debug_mode and not is_reloader_process:
-            _cleanup_registered = True  # 标记已注册，防止子进程再次尝试
-            return
-
-        # 保存原有的信号处理器
         original_sigint = signal.getsignal(signal.SIGINT)
         original_sigterm = signal.getsignal(signal.SIGTERM)
-        # SIGHUP 只在 Unix 系统存在（macOS/Linux），Windows 没有
         original_sighup = None
         has_sighup = hasattr(signal, "SIGHUP")
         if has_sighup:
             original_sighup = signal.getsignal(signal.SIGHUP)
 
-        def cleanup_handler(signum=None, frame=None):
-            """信号处理器：先清理模拟进程，再调用原处理器"""
-            # 只有在有进程需要清理时才打印日志
-            if cls._processes or cls._graph_memory_enabled:
-                logger.info(f"收到信号 {signum}，开始清理...")
-            cls.cleanup_all_simulations()
+        def detach_handler(signum=None, frame=None):
+            """信号处理器：松手后调用原处理器，让服务正常退出。"""
+            if cls._processes or cls._monitor_threads:
+                logger.info(f"收到信号 {signum}，松手退出（保留子进程）...")
+            cls.detach_all_simulations()
 
-            # 调用原有的信号处理器，让 Flask 正常退出
             if signum == signal.SIGINT and callable(original_sigint):
                 original_sigint(signum, frame)
             elif signum == signal.SIGTERM and callable(original_sigterm):
                 original_sigterm(signum, frame)
             elif has_sighup and signum == signal.SIGHUP:
-                # SIGHUP: 终端关闭时发送
                 if callable(original_sighup):
                     original_sighup(signum, frame)
                 else:
-                    # 默认行为：正常退出
                     sys.exit(0)
             else:
-                # 如果原处理器不可调用（如 SIG_DFL），则使用默认行为
                 raise KeyboardInterrupt
 
-        # 注册 atexit 处理器（作为备用）
-        atexit.register(cls.cleanup_all_simulations)
+        # atexit 兜底
+        atexit.register(cls.detach_all_simulations)
 
-        # 注册信号处理器（仅在主线程中）
         try:
-            # SIGTERM: kill 命令默认信号
-            signal.signal(signal.SIGTERM, cleanup_handler)
-            # SIGINT: Ctrl+C
-            signal.signal(signal.SIGINT, cleanup_handler)
-            # SIGHUP: 终端关闭（仅 Unix 系统）
+            signal.signal(signal.SIGTERM, detach_handler)
+            signal.signal(signal.SIGINT, detach_handler)
             if has_sighup:
-                signal.signal(signal.SIGHUP, cleanup_handler)
+                signal.signal(signal.SIGHUP, detach_handler)
         except ValueError:
-            # 不在主线程中，只能使用 atexit
             logger.warning("无法注册信号处理器（不在主线程），仅使用 atexit")
 
         _cleanup_registered = True

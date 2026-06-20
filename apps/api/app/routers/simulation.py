@@ -965,6 +965,30 @@ def stop_simulation(req: StopSimulationRequest):
         return _error(str(e), 500, traceback=traceback.format_exc())
 
 
+@router.post("/admin/stop-all")
+def stop_all_simulations():
+    """运维入口：终止所有正在运行的模拟（含服务重启后接管的孤儿）。
+
+    配合「进程退出时松手不杀子进程」的策略——真正想全停时调用此接口。
+    """
+    try:
+        result = SimulationRunner.cleanup_all_simulations()
+        # 同步把这些模拟的元数据状态置为 paused
+        manager = SimulationManager()
+        for sid in result.get("stopped", []):
+            try:
+                state = manager.get_simulation(sid)
+                if state:
+                    state.status = SimulationStatus.PAUSED
+                    manager._save_simulation_state(state)
+            except Exception as e:
+                logger.warning(f"更新模拟元数据状态失败: {sid}, error={e}")
+        return {"success": True, "data": result}
+    except Exception as e:
+        logger.error(f"全部停止失败: {str(e)}")
+        return _error(str(e), 500, traceback=traceback.format_exc())
+
+
 # ============== Interview 采访接口 ==============
 
 
