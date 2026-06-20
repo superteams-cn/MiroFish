@@ -15,6 +15,7 @@ import {
 
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { cn } from '@/lib/utils'
+import { platformMeta } from '@/lib/ui-meta'
 import type { ActionItem } from '@/lib/step3-types'
 
 const TYPE_LABELS: Record<string, string> = {
@@ -107,6 +108,7 @@ export function ActionCard({
   const type = action.action_type
   const TypeIcon = type ? TYPE_ICONS[type] : undefined
   const isTwitter = action.platform === 'twitter'
+  const platform = platformMeta(action.platform)
 
   return (
     <div className={cn(variant === 'list' && 'relative pl-6')}>
@@ -114,7 +116,7 @@ export function ActionCard({
         <span
           className={cn(
             'border-background absolute left-0 top-2 h-2.5 w-2.5 rounded-full border-2',
-            isTwitter ? 'bg-sky-500' : 'bg-orange-500',
+            platform.dot,
           )}
         />
       )}
@@ -133,7 +135,7 @@ export function ActionCard({
               <span
                 className={cn(
                   'rounded px-1.5 py-0.5 text-[9px] font-bold uppercase',
-                  isTwitter ? 'bg-sky-500/15 text-sky-600' : 'bg-orange-500/15 text-orange-600',
+                  platform.badge,
                 )}
               >
                 {isTwitter ? 'X' : 'Reddit'}

@@ -17,6 +17,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
+import { ACCENT_SOFT, STATUS_TEXT } from '@/lib/ui-meta'
 import type { AgentLogEntry } from '@/lib/step4-types'
 import { ToolResultDisplay } from './ToolResultDisplay'
 
@@ -38,32 +39,32 @@ const TOOL_META: Record<string, { labelKey: string; Icon: LucideIcon; color: str
   insight_forge: {
     labelKey: 'step4.toolDeepInsight',
     Icon: Lightbulb,
-    color: 'text-violet-500 bg-violet-500/10',
+    color: ACCENT_SOFT.violet,
   },
   panorama_search: {
     labelKey: 'step4.toolPanoramaSearch',
     Icon: Globe,
-    color: 'text-blue-500 bg-blue-500/10',
+    color: ACCENT_SOFT.blue,
   },
   interview_agents: {
     labelKey: 'step4.toolAgentInterview',
     Icon: Users,
-    color: 'text-green-500 bg-green-500/10',
+    color: ACCENT_SOFT.green,
   },
   quick_search: {
     labelKey: 'step4.toolQuickSearch',
     Icon: Zap,
-    color: 'text-orange-500 bg-orange-500/10',
+    color: ACCENT_SOFT.orange,
   },
   get_graph_statistics: {
     labelKey: 'step4.toolGraphStats',
     Icon: BarChart3,
-    color: 'text-cyan-500 bg-cyan-500/10',
+    color: ACCENT_SOFT.cyan,
   },
   get_entities_by_type: {
     labelKey: 'step4.toolEntityQuery',
     Icon: Database,
-    color: 'text-pink-500 bg-pink-500/10',
+    color: ACCENT_SOFT.pink,
   },
 }
 
@@ -190,18 +191,28 @@ export function AgentLogTimeline({ logs }: { logs: AgentLogEntry[] }) {
               )}
               {log.action === 'section_content' && log.section_title && (
                 <p className="mt-1 flex items-center gap-1.5 text-[11px]">
-                  <Pencil className="h-3 w-3 text-amber-500" />
+                  <Pencil className={cn('h-3 w-3', STATUS_TEXT.warning)} />
                   <span>{log.section_title}</span>
                 </p>
               )}
               {log.action === 'section_complete' && log.section_title && (
-                <p className="mt-1 flex items-center gap-1.5 text-[11px] font-medium text-green-600">
+                <p
+                  className={cn(
+                    'mt-1 flex items-center gap-1.5 text-[11px] font-medium',
+                    STATUS_TEXT.success,
+                  )}
+                >
                   <Check className="h-3 w-3" />
                   <span>{log.section_title}</span>
                 </p>
               )}
               {log.action === 'report_complete' && (
-                <p className="mt-1 flex items-center gap-1.5 text-[11px] font-medium text-green-600">
+                <p
+                  className={cn(
+                    'mt-1 flex items-center gap-1.5 text-[11px] font-medium',
+                    STATUS_TEXT.success,
+                  )}
+                >
                   <CheckCircle2 className="h-3.5 w-3.5" />
                   <span>{t('step4.reportGenComplete')}</span>
                 </p>
@@ -258,7 +269,12 @@ export function AgentLogTimeline({ logs }: { logs: AgentLogEntry[] }) {
                     </span>
                   </div>
                   {detail.has_final_answer && (
-                    <p className="mt-1 flex items-center gap-1.5 text-[11px] text-green-600">
+                    <p
+                      className={cn(
+                        'mt-1 flex items-center gap-1.5 text-[11px]',
+                        STATUS_TEXT.success,
+                      )}
+                    >
                       <Check className="h-3 w-3" />
                       <span>{t('step4.llmFinalHint', { title: log.section_title || '' })}</span>
                     </p>

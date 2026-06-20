@@ -7,6 +7,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
+import { ACCENT_SOFT } from '@/lib/ui-meta'
 import type { Profile } from '@/lib/step2-types'
 import type { ChatMessage, ToolCall } from '@/lib/step5-types'
 
@@ -180,10 +181,10 @@ function TypingIndicator() {
 }
 
 const TOOLS = [
-  { key: 'InsightForge', icon: Brain, color: 'text-violet-500 bg-violet-500/10' },
-  { key: 'PanoramaSearch', icon: Globe, color: 'text-blue-500 bg-blue-500/10' },
-  { key: 'QuickSearch', icon: Zap, color: 'text-orange-500 bg-orange-500/10' },
-  { key: 'InterviewSubAgent', icon: Users, color: 'text-green-500 bg-green-500/10' },
+  { key: 'InsightForge', icon: Brain, color: ACCENT_SOFT.violet },
+  { key: 'PanoramaSearch', icon: Globe, color: ACCENT_SOFT.blue },
+  { key: 'QuickSearch', icon: Zap, color: ACCENT_SOFT.orange },
+  { key: 'InterviewSubAgent', icon: Users, color: ACCENT_SOFT.green },
 ] as const
 
 /** ReportAgent 工具说明卡（可折叠，展示 4 个专业工具） */

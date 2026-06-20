@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next'
 
 import { cn } from '@/lib/utils'
+import { STATUS_TEXT } from '@/lib/ui-meta'
 import type { AgentConfig } from '@/lib/step2-types'
 
 /** 单个 Agent 行为配置卡片（活跃时间轴 + 行为参数）。 */
@@ -70,9 +71,9 @@ export function AgentConfigItem({ agent }: { agent: AgentConfig }) {
             className={cn(
               'font-mono font-semibold',
               sentiment > 0
-                ? 'text-green-600'
+                ? STATUS_TEXT.success
                 : sentiment < 0
-                  ? 'text-red-600'
+                  ? STATUS_TEXT.error
                   : 'text-muted-foreground',
             )}
           >

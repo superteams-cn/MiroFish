@@ -22,6 +22,7 @@ import {
   getRunStatusDetail,
 } from '@/lib/api/simulation'
 import { generateReport } from '@/lib/api/report'
+import { PLATFORM_META } from '@/lib/ui-meta'
 import type { SystemLog } from '@/lib/process-types'
 import type { ActionItem, RunStatus } from '@/lib/step3-types'
 import type { WorkflowStatus } from '@/components/WorkflowLayout'
@@ -386,8 +387,8 @@ export function Step3Simulation({
                 {t('step3.totalEvents')}: <span className="font-mono">{actions.length}</span>
               </span>
               <span className="font-mono">
-                <span className="text-sky-500">{twitterCount}</span> /{' '}
-                <span className="text-orange-500">{redditCount}</span>
+                <span className={PLATFORM_META.twitter.text}>{twitterCount}</span> /{' '}
+                <span className={PLATFORM_META.reddit.text}>{redditCount}</span>
               </span>
             </div>
           )}

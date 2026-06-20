@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next'
 
 import { ActionCard } from '@/components/step3/ActionCard'
 import { cn } from '@/lib/utils'
+import { PLATFORM_META } from '@/lib/ui-meta'
 import type { ActionItem } from '@/lib/step3-types'
 
 interface Props {
@@ -29,12 +30,12 @@ export function DualTimeline({ actions }: Props) {
         {/* 轨道分栏表头 */}
         <div className="text-muted-foreground mb-3 flex items-center justify-between text-[10px] font-semibold uppercase tracking-wide opacity-70">
           <span className="flex items-center gap-1">
-            <span className="h-1.5 w-1.5 rounded-full bg-sky-500" />
+            <span className={cn('h-1.5 w-1.5 rounded-full', PLATFORM_META.twitter.dot)} />
             {t('step3.platformTwitterName')}
           </span>
           <span className="flex items-center gap-1">
             {t('step3.platformRedditName')}
-            <span className="h-1.5 w-1.5 rounded-full bg-orange-500" />
+            <span className={cn('h-1.5 w-1.5 rounded-full', PLATFORM_META.reddit.dot)} />
           </span>
         </div>
         <div className="relative">
@@ -52,7 +53,7 @@ export function DualTimeline({ actions }: Props) {
                   <span
                     className={cn(
                       'border-background absolute left-1/2 top-3 z-[1] h-3 w-3 -translate-x-1/2 rounded-full border-2',
-                      isTwitter ? 'bg-sky-500' : 'bg-orange-500',
+                      isTwitter ? PLATFORM_META.twitter.dot : PLATFORM_META.reddit.dot,
                     )}
                   />
                   <div className={cn('w-[calc(50%-1.5rem)]', isTwitter ? 'pr-2' : 'pl-2')}>

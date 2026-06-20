@@ -3,6 +3,7 @@ import { Check } from 'lucide-react'
 
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
+import { STATUS_TEXT } from '@/lib/ui-meta'
 
 interface Props {
   name: string
@@ -41,7 +42,7 @@ export function PlatformStatusCard({
         >
           <div className="mb-2 flex items-center gap-2">
             <span className="text-xs font-semibold">{name}</span>
-            {completed && <Check className="h-3.5 w-3.5 text-green-600" />}
+            {completed && <Check className={cn('h-3.5 w-3.5', STATUS_TEXT.success)} />}
             {running && <span className="bg-brand h-1.5 w-1.5 animate-pulse rounded-full" />}
           </div>
           <div className="grid grid-cols-3 gap-2 text-center">
