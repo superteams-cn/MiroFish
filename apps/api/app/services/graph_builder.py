@@ -21,8 +21,8 @@ from llama_index.core.schema import TextNode
 from llama_index.llms.openai_like import OpenAILike
 from pydantic import PrivateAttr
 
-from ..config import Config
 from ..models.task import TaskManager, TaskStatus
+from ..settings import settings
 from ..utils.llm_client import LLMClient
 from ..utils.locale import get_locale, set_locale, t
 from ..utils.logger import get_logger
@@ -117,11 +117,11 @@ class SuperFishStructuredLLM(OpenAILike):
 
     def __init__(self):
         super().__init__(
-            model=Config.LLM_MODEL_NAME,
-            api_base=Config.LLM_BASE_URL,
-            api_key=Config.LLM_API_KEY,
+            model=settings.llm_model_name,
+            api_base=settings.llm_base_url,
+            api_key=settings.llm_api_key,
             temperature=0.1,
-            max_tokens=Config.GRAPH_EXTRACT_MAX_TOKENS,
+            max_tokens=settings.graph_extract_max_tokens,
             is_chat_model=True,
             is_function_calling_model=False,
             timeout=120,
@@ -168,7 +168,7 @@ class SuperFishStructuredLLM(OpenAILike):
                 data = self._json_client.chat_json(
                     messages,
                     temperature=0.1,
-                    max_tokens=Config.GRAPH_EXTRACT_MAX_TOKENS,
+                    max_tokens=settings.graph_extract_max_tokens,
                 )
                 return output_cls.model_validate(data)
             except Exception as exc:
@@ -851,7 +851,7 @@ class GraphBuilderService:
             possible_relation_props=relation_props,
             kg_validation_schema=validation_schema,
             strict=True,
-            max_triplets_per_chunk=max_triplets or Config.GRAPH_EXTRACT_MAX_TRIPLETS,
+            max_triplets_per_chunk=max_triplets or settings.graph_extract_max_triplets,
             num_workers=1,
             allow_additional_properties=False,
         )

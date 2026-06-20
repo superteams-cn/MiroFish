@@ -1,0 +1,142 @@
+"""
+配置管理（pydantic-settings）
+
+- 统一从仓库根目录的 .env 加载；真实环境变量优先级高于 .env（docker compose 注入的变量会生效）。
+- 通过模块级单例 `settings` 访问，字段为小写蛇形，例如 settings.llm_api_key。
+"""
+
+from pathlib import Path
+
+from pydantic import Field, field_validator, model_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# apps/api/app/ 目录；上溯三级定位仓库根的 .env
+_APP_DIR = Path(__file__).resolve().parent
+_REPO_ROOT = _APP_DIR.parents[2]
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=str(_REPO_ROOT / ".env"),
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",
+    )
+
+    # ===== 服务运行 =====
+    debug: bool = Field(default=True, validation_alias="APP_DEBUG")
+    host: str = Field(default="0.0.0.0", validation_alias="API_HOST")
+    port: int = Field(default=5001, validation_alias="API_PORT")
+
+    # ===== LLM（统一 OpenAI 格式）=====
+    llm_api_key: str | None = None
+    llm_base_url: str = "https://api.openai.com/v1"
+    llm_model_name: str = "gpt-4o-mini"
+    llm_request_timeout: float = 120.0
+
+    # ===== 本体生成 =====
+    # 最大输出 token：推理类模型的思考过程也计入此预算，设小会截断 JSON 致解析失败。
+    ontology_max_tokens: int = 16384
+    # 实体类型总数（含「个人/组织」2 个兜底类型）；同时作为后处理硬上限。最小 3。
+    ontology_entity_types: int = 10
+    # 关系类型数量范围（提示词建议区间）；上限同时作为后处理硬截断。
+    ontology_edge_types_min: int = 6
+    ontology_edge_types_max: int = 10
+
+    # ===== 图谱抽取 =====
+    # 每个文本块的最大输出 token；块更大、三元组更多时需更高，避免 JSON 截断。
+    graph_extract_max_tokens: int = 16384
+    # LlamaIndex SchemaLLMPathExtractor 每个文本块最多抽取的三元组数量。
+    graph_extract_max_triplets: int = 20
+
+    # ===== Neo4j（schema 约束知识图谱）=====
+    neo4j_uri: str = "bolt://localhost:7687"
+    neo4j_user: str = "neo4j"
+    neo4j_password: str = "superfish_neo4j"
+
+    # ===== Redis（缓存/队列）=====
+    # 源码部署默认 localhost；docker compose 中由 compose 注入 redis://redis:6379/0
+    redis_url: str = "redis://localhost:6379/0"
+
+    # ===== Postgres（项目/任务等关系型元数据）=====
+    database_url: str = "postgresql+psycopg://superfish:superfish_pg@localhost:5432/superfish"
+
+    # ===== S3 兼容对象存储（RustFS）=====
+    s3_endpoint_url: str = "http://localhost:9000"
+    s3_access_key: str = "superfish"
+    s3_secret_key: str = "superfish_secret"
+    s3_bucket: str = "superfish"
+    s3_region: str = "us-east-1"
+
+    # ===== 文件上传 =====
+    max_content_length: int = 50 * 1024 * 1024  # 50MB
+    upload_folder: str = str(_APP_DIR.parent / "uploads")
+    allowed_extensions: set[str] = {"pdf", "md", "txt", "markdown"}
+
+    # ===== 文本分块（大上下文模型可调大以减少分块数与跨块实体分裂）=====
+    default_chunk_size: int = 5000
+    default_chunk_overlap: int = 200
+
+    # ===== OASIS 模拟 =====
+    oasis_default_max_rounds: int = 10
+    oasis_simulation_data_dir: str = str(_APP_DIR.parent / "uploads" / "simulations")
+    oasis_twitter_actions: list[str] = [
+        "CREATE_POST",
+        "LIKE_POST",
+        "REPOST",
+        "FOLLOW",
+        "DO_NOTHING",
+        "QUOTE_POST",
+    ]
+    oasis_reddit_actions: list[str] = [
+        "LIKE_POST",
+        "DISLIKE_POST",
+        "CREATE_POST",
+        "CREATE_COMMENT",
+        "LIKE_COMMENT",
+        "DISLIKE_COMMENT",
+        "SEARCH_POSTS",
+        "SEARCH_USER",
+        "TREND",
+        "REFRESH",
+        "DO_NOTHING",
+        "FOLLOW",
+        "MUTE",
+    ]
+
+    # ===== Report Agent =====
+    report_agent_max_tool_calls: int = 5
+    # 报告章节生成的最大输出 token；推理类模型思考过程亦计入，设小会截断正文。
+    report_agent_max_tokens: int = 8192
+    report_agent_max_reflection_rounds: int = 2
+    report_agent_temperature: float = 0.5
+
+    @field_validator("ontology_entity_types")
+    @classmethod
+    def _clamp_entity_types(cls, v: int) -> int:
+        # 至少 1 个具体类型 + 2 个兜底类型
+        return max(3, v)
+
+    @field_validator("ontology_edge_types_min")
+    @classmethod
+    def _clamp_edge_min(cls, v: int) -> int:
+        return max(1, v)
+
+    @model_validator(mode="after")
+    def _clamp_edge_max(self) -> "Settings":
+        if self.ontology_edge_types_max < self.ontology_edge_types_min:
+            self.ontology_edge_types_max = self.ontology_edge_types_min
+        return self
+
+    def validate_required(self) -> list[str]:
+        """验证必要配置，返回错误信息列表（空列表表示通过）。"""
+        errors: list[str] = []
+        if not self.llm_api_key:
+            errors.append("LLM_API_KEY 未配置")
+        if not self.neo4j_uri:
+            errors.append("NEO4J_URI 未配置")
+        return errors
+
+
+# 模块级单例：全项目统一通过 `from .settings import settings` 访问
+settings = Settings()

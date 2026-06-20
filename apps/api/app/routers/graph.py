@@ -11,7 +11,6 @@ import traceback
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 from fastapi.responses import JSONResponse
 
-from ..config import Config
 from ..deps import use_locale
 from ..jobqueue import enqueue
 from ..models.project import ProjectManager, ProjectStatus
@@ -20,6 +19,7 @@ from ..schemas.graph import BuildGraphRequest
 from ..services.graph_builder import GraphBuilderService
 from ..services.ontology_generator import OntologyGenerator
 from ..services.text_processor import TextProcessor
+from ..settings import settings
 from ..utils.file_parser import FileParser
 from ..utils.locale import get_locale, t
 from ..utils.logger import get_logger
@@ -43,7 +43,7 @@ def allowed_file(filename: str) -> bool:
     if not filename or "." not in filename:
         return False
     ext = os.path.splitext(filename)[1].lower().lstrip(".")
-    return ext in Config.ALLOWED_EXTENSIONS
+    return ext in settings.allowed_extensions
 
 
 # ============== 项目管理接口 ==============
@@ -222,7 +222,7 @@ def build_graph(req: BuildGraphRequest):
         logger.info("=== 开始构建图谱 ===")
 
         # 检查配置
-        if not Config.NEO4J_URI:
+        if not settings.neo4j_uri:
             logger.error("配置错误: 缺少 NEO4J 配置")
             return _error(t("api.configError", details=t("api.neo4jConfigMissing")), 500)
 
@@ -272,8 +272,8 @@ def build_graph(req: BuildGraphRequest):
         # 获取配置：优先显式入参，否则用当前默认(env 可配)。
         # 不再回退到 project 中创建时冻结的旧值，使改默认后重建即生效。
         graph_name = req.graph_name or project.name or "SuperFish Graph"
-        chunk_size = req.chunk_size or Config.DEFAULT_CHUNK_SIZE
-        chunk_overlap = req.chunk_overlap or Config.DEFAULT_CHUNK_OVERLAP
+        chunk_size = req.chunk_size or settings.default_chunk_size
+        chunk_overlap = req.chunk_overlap or settings.default_chunk_overlap
 
         # 更新项目配置
         project.chunk_size = chunk_size
@@ -360,10 +360,10 @@ def list_tasks():
 def get_graph_data(graph_id: str):
     """获取图谱数据（节点和边）"""
     try:
-        if not Config.NEO4J_URI:
+        if not settings.neo4j_uri:
             return _error(t("api.neo4jConfigMissing"), 500)
 
-        builder = GraphBuilderService(api_key=Config.NEO4J_URI)
+        builder = GraphBuilderService(api_key=settings.neo4j_uri)
         graph_data = builder.get_graph_data(graph_id)
         return {"success": True, "data": graph_data}
 
@@ -378,7 +378,7 @@ def recanonicalize_project_graph(project_id: str, dry_run: bool = False):
     dry_run=true 时只返回拟合并分组，不改动数据库（用于先复核再执行）。
     """
     try:
-        if not Config.NEO4J_URI:
+        if not settings.neo4j_uri:
             return _error(t("api.neo4jConfigMissing"), 500)
 
         project = ProjectManager.get_project(project_id)
@@ -387,7 +387,7 @@ def recanonicalize_project_graph(project_id: str, dry_run: bool = False):
         if not project.graph_id:
             return _error(t("api.graphNotBuilt"), 400)
 
-        builder = GraphBuilderService(api_key=Config.NEO4J_URI)
+        builder = GraphBuilderService(api_key=settings.neo4j_uri)
         result = builder.recanonicalize_graph(project.graph_id, dry_run=dry_run)
         logger.info(f"图谱实体消解完成: {result}")
         return {"success": True, "data": result}
@@ -400,10 +400,10 @@ def recanonicalize_project_graph(project_id: str, dry_run: bool = False):
 def delete_graph(graph_id: str):
     """删除 Neo4j 图谱"""
     try:
-        if not Config.NEO4J_URI:
+        if not settings.neo4j_uri:
             return _error(t("api.neo4jConfigMissing"), 500)
 
-        builder = GraphBuilderService(api_key=Config.NEO4J_URI)
+        builder = GraphBuilderService(api_key=settings.neo4j_uri)
         builder.delete_graph(graph_id)
         return {"success": True, "message": t("api.graphDeleted", id=graph_id)}
 

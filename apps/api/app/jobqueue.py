@@ -15,7 +15,7 @@ from arq import create_pool
 from arq.connections import RedisSettings
 
 from . import jobs
-from .config import Config
+from .settings import settings
 from .utils.logger import get_logger
 
 logger = get_logger("superfish.jobqueue")
@@ -31,7 +31,7 @@ _JOBS = {
 
 
 def _redis_settings() -> RedisSettings:
-    return RedisSettings.from_dsn(Config.REDIS_URL)
+    return RedisSettings.from_dsn(settings.redis_url)
 
 
 def _run_inline(sync_fn, kwargs: dict) -> None:

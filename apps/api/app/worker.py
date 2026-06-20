@@ -10,14 +10,14 @@ import asyncio
 from arq.connections import RedisSettings
 
 from . import jobs
-from .config import Config
+from .settings import settings
 from .utils.logger import get_logger, setup_logger
 
 logger = get_logger("superfish.worker")
 
 
 def _redis_settings() -> RedisSettings:
-    return RedisSettings.from_dsn(Config.REDIS_URL)
+    return RedisSettings.from_dsn(settings.redis_url)
 
 
 async def graph_build_job(ctx, **kwargs) -> None:

@@ -103,11 +103,11 @@ class Neo4jGraphClient:
     """Small synchronous Neo4j client with the subset used by SuperFish."""
 
     def __init__(self):
-        from ..config import Config
+        from ..settings import settings
 
         self.driver = GraphDatabase.driver(
-            Config.NEO4J_URI,
-            auth=(Config.NEO4J_USER, Config.NEO4J_PASSWORD),
+            settings.neo4j_uri,
+            auth=(settings.neo4j_user, settings.neo4j_password),
         )
 
     def close(self):

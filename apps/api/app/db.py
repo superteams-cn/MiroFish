@@ -13,7 +13,7 @@ from collections.abc import Iterator
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
-from .config import Config
+from .settings import settings
 from .utils.logger import get_logger
 
 logger = get_logger("superfish.db")
@@ -25,7 +25,7 @@ class Base(DeclarativeBase):
 
 # 连接池 + pre_ping（自动剔除失效连接，避免长时间空闲后报错）
 engine = create_engine(
-    Config.DATABASE_URL,
+    settings.database_url,
     pool_pre_ping=True,
     pool_size=10,
     max_overflow=20,

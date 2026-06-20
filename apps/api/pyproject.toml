@@ -30,6 +30,8 @@ dependencies = [
     # 工具库
     "python-dotenv>=1.0.0",
     "pydantic>=2.0.0",
+    # 配置管理（BaseSettings）
+    "pydantic-settings>=2.0.0",
     "llama-index-core>=0.14.22",
     "llama-index-llms-openai-like>=0.7.2",
     # 关系型元数据持久化（项目/任务），psycopg3 同步驱动

@@ -1,11 +1,11 @@
 """
 模拟IPC通信模块
-用于Flask后端和模拟脚本之间的进程间通信
+用于后端（FastAPI）和模拟脚本之间的进程间通信
 
 通过文件系统实现简单的命令/响应模式：
-1. Flask写入命令到 commands/ 目录
+1. 后端写入命令到 commands/ 目录
 2. 模拟脚本轮询命令目录，执行命令并写入响应到 responses/ 目录
-3. Flask轮询响应目录获取结果
+3. 后端轮询响应目录获取结果
 """
 
 import json
@@ -98,7 +98,7 @@ class IPCResponse:
 
 class SimulationIPCClient:
     """
-    模拟IPC客户端（Flask端使用）
+    模拟IPC客户端（后端使用）
 
     用于向模拟进程发送命令并等待响应
     """

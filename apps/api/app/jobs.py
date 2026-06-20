@@ -8,9 +8,9 @@
 
 import traceback
 
-from .config import Config
 from .models.project import ProjectManager, ProjectStatus
 from .models.task import TaskManager, TaskStatus
+from .settings import settings
 from .utils.locale import set_locale, t
 from .utils.logger import get_logger
 
@@ -52,7 +52,7 @@ def run_graph_build(
             ProjectManager.save_project(project)
             return
 
-        builder = GraphBuilderService(api_key=Config.NEO4J_URI)
+        builder = GraphBuilderService(api_key=settings.neo4j_uri)
         builder.build_graph(
             task_id=task_id,
             text=text,

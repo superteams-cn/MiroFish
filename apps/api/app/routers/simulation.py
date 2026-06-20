@@ -19,7 +19,6 @@ from datetime import datetime
 from fastapi import APIRouter, Depends
 from fastapi.responses import FileResponse, JSONResponse
 
-from ..config import Config
 from ..deps import use_locale
 from ..models.project import ProjectManager
 from ..schemas.simulation import (
@@ -40,6 +39,7 @@ from ..services.neo4j_entity_reader import Neo4jEntityReader
 from ..services.oasis_profile_generator import OasisProfileGenerator
 from ..services.simulation_manager import SimulationManager, SimulationStatus
 from ..services.simulation_runner import SimulationRunner
+from ..settings import settings
 from ..utils.locale import get_locale, set_locale, t
 from ..utils.logger import get_logger
 
@@ -168,7 +168,7 @@ def get_graph_entities(graph_id: str, entity_types: str = "", enrich: str = "tru
         enrich: 是否获取相关边信息（默认 true）
     """
     try:
-        if not Config.NEO4J_URI:
+        if not settings.neo4j_uri:
             return _error(t("api.neo4jConfigMissing"), 500)
 
         entity_types_str = entity_types
@@ -200,7 +200,7 @@ def get_graph_entities(graph_id: str, entity_types: str = "", enrich: str = "tru
 def get_entities_by_type(graph_id: str, entity_type: str, enrich: str = "true"):
     """获取指定类型的所有实体"""
     try:
-        if not Config.NEO4J_URI:
+        if not settings.neo4j_uri:
             return _error(t("api.neo4jConfigMissing"), 500)
 
         enrich_bool = enrich.lower() == "true"
@@ -228,7 +228,7 @@ def get_entities_by_type(graph_id: str, entity_type: str, enrich: str = "true"):
 def get_entity_detail(graph_id: str, entity_uuid: str):
     """获取单个实体的详细信息"""
     try:
-        if not Config.NEO4J_URI:
+        if not settings.neo4j_uri:
             return _error(t("api.neo4jConfigMissing"), 500)
 
         reader = Neo4jEntityReader()
@@ -1405,7 +1405,7 @@ def get_simulation_profiles_realtime(simulation_id: str, platform: str = "reddit
         if sim_state is None:
             return _error(t("api.simulationNotFound", id=simulation_id), 404)
 
-        sim_dir = os.path.join(Config.OASIS_SIMULATION_DATA_DIR, simulation_id)
+        sim_dir = os.path.join(settings.oasis_simulation_data_dir, simulation_id)
 
         # 确定文件路径
         if platform == "reddit":
@@ -1476,7 +1476,7 @@ def get_simulation_config_realtime(simulation_id: str):
         if sim_state is None:
             return _error(t("api.simulationNotFound", id=simulation_id), 404)
 
-        sim_dir = os.path.join(Config.OASIS_SIMULATION_DATA_DIR, simulation_id)
+        sim_dir = os.path.join(settings.oasis_simulation_data_dir, simulation_id)
 
         # 配置文件路径
         config_file = os.path.join(sim_dir, "simulation_config.json")

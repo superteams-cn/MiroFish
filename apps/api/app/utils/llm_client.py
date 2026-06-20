@@ -9,7 +9,7 @@ from typing import Any
 
 from openai import OpenAI
 
-from ..config import Config
+from ..settings import settings
 
 
 class LLMClient:
@@ -18,9 +18,9 @@ class LLMClient:
     def __init__(
         self, api_key: str | None = None, base_url: str | None = None, model: str | None = None
     ):
-        self.api_key = api_key or Config.LLM_API_KEY
-        self.base_url = base_url or Config.LLM_BASE_URL
-        self.model = model or Config.LLM_MODEL_NAME
+        self.api_key = api_key or settings.llm_api_key
+        self.base_url = base_url or settings.llm_base_url
+        self.model = model or settings.llm_model_name
 
         if not self.api_key:
             raise ValueError("LLM_API_KEY 未配置")
@@ -28,7 +28,7 @@ class LLMClient:
         self.client = OpenAI(
             api_key=self.api_key,
             base_url=self.base_url,
-            timeout=Config.LLM_REQUEST_TIMEOUT,
+            timeout=settings.llm_request_timeout,
         )
 
     def chat(

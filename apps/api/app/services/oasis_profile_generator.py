@@ -17,7 +17,7 @@ from typing import Any
 
 from openai import OpenAI
 
-from ..config import Config
+from ..settings import settings
 from ..utils.locale import get_language_instruction, get_locale, set_locale, t
 from ..utils.logger import get_logger
 from ..utils.neo4j_graph_utils import fetch_all_edges, fetch_all_nodes, get_neo4j_graph_client
@@ -289,9 +289,9 @@ class OasisProfileGenerator:
         graph_api_key: str | None = None,
         graph_id: str | None = None,
     ):
-        self.api_key = api_key or Config.LLM_API_KEY
-        self.base_url = base_url or Config.LLM_BASE_URL
-        self.model_name = model_name or Config.LLM_MODEL_NAME
+        self.api_key = api_key or settings.llm_api_key
+        self.base_url = base_url or settings.llm_base_url
+        self.model_name = model_name or settings.llm_model_name
 
         if not self.api_key:
             raise ValueError("LLM_API_KEY 未配置")

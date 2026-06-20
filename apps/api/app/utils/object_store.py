@@ -12,7 +12,7 @@ import boto3
 from botocore.client import Config as BotoConfig
 from botocore.exceptions import ClientError
 
-from ..config import Config
+from ..settings import settings
 from .logger import get_logger
 
 logger = get_logger("superfish.object_store")
@@ -29,10 +29,10 @@ def _get_client() -> Any:
             if _client is None:
                 _client = boto3.client(
                     "s3",
-                    endpoint_url=Config.S3_ENDPOINT_URL,
-                    aws_access_key_id=Config.S3_ACCESS_KEY,
-                    aws_secret_access_key=Config.S3_SECRET_KEY,
-                    region_name=Config.S3_REGION,
+                    endpoint_url=settings.s3_endpoint_url,
+                    aws_access_key_id=settings.s3_access_key,
+                    aws_secret_access_key=settings.s3_secret_key,
+                    region_name=settings.s3_region,
                     config=BotoConfig(
                         signature_version="s3v4",
                         s3={"addressing_style": "path"},
@@ -49,7 +49,7 @@ def _get_client() -> Any:
 def ensure_bucket() -> None:
     """确保桶存在（幂等）。应用启动时调用。"""
     client = _get_client()
-    bucket = Config.S3_BUCKET
+    bucket = settings.s3_bucket
     try:
         client.head_bucket(Bucket=bucket)
     except ClientError:
@@ -65,7 +65,9 @@ def ensure_bucket() -> None:
 
 def put_bytes(key: str, data: bytes, content_type: str = "application/octet-stream") -> str:
     """上传字节对象，返回对象 key。"""
-    _get_client().put_object(Bucket=Config.S3_BUCKET, Key=key, Body=data, ContentType=content_type)
+    _get_client().put_object(
+        Bucket=settings.s3_bucket, Key=key, Body=data, ContentType=content_type
+    )
     return key
 
 
@@ -77,7 +79,7 @@ def put_text(key: str, text: str) -> str:
 def get_bytes(key: str) -> bytes | None:
     """读取字节对象；不存在返回 None。"""
     try:
-        resp = _get_client().get_object(Bucket=Config.S3_BUCKET, Key=key)
+        resp = _get_client().get_object(Bucket=settings.s3_bucket, Key=key)
         return resp["Body"].read()
     except ClientError as exc:
         code = exc.response.get("Error", {}).get("Code", "")
@@ -95,7 +97,7 @@ def get_text(key: str) -> str | None:
 def delete_prefix(prefix: str) -> None:
     """删除某前缀下的所有对象（用于删除项目时清理其文件）。"""
     client = _get_client()
-    bucket = Config.S3_BUCKET
+    bucket = settings.s3_bucket
     paginator = client.get_paginator("list_objects_v2")
     to_delete: list[dict[str, str]] = []
     for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
@@ -123,7 +125,7 @@ def download_prefix_to_dir(prefix: str, local_dir: str) -> int:
     import os
 
     client = _get_client()
-    bucket = Config.S3_BUCKET
+    bucket = settings.s3_bucket
     paginator = client.get_paginator("list_objects_v2")
     count = 0
     for page in paginator.paginate(Bucket=bucket, Prefix=prefix):

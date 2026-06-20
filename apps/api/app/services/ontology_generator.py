@@ -8,7 +8,7 @@ import re
 import zlib
 from typing import Any
 
-from ..config import Config
+from ..settings import settings
 from ..utils.llm_client import LLMClient
 from ..utils.locale import get_language_instruction, get_locale
 
@@ -207,12 +207,12 @@ class OntologyGenerator:
 
         lang_instruction = get_language_instruction()
         # 按配置注入实体/关系类型数量（占位符用 __TOKEN__ 形式，避免与提示词内 JSON 的花括号冲突）
-        entity_total = Config.ONTOLOGY_ENTITY_TYPES
+        entity_total = settings.ontology_entity_types
         base_prompt = (
             ONTOLOGY_SYSTEM_PROMPT.replace("__ENTITY_TOTAL__", str(entity_total))
             .replace("__ENTITY_SPECIFIC__", str(max(1, entity_total - 2)))
-            .replace("__EDGE_MIN__", str(Config.ONTOLOGY_EDGE_TYPES_MIN))
-            .replace("__EDGE_MAX__", str(Config.ONTOLOGY_EDGE_TYPES_MAX))
+            .replace("__EDGE_MIN__", str(settings.ontology_edge_types_min))
+            .replace("__EDGE_MAX__", str(settings.ontology_edge_types_max))
         )
         system_prompt = f"{base_prompt}\n\n{lang_instruction}\nIMPORTANT: Entity type names and relationship type names MUST use the specified language above. For Chinese output, use concise Chinese schema names directly (e.g., '人物', '组织', '支持', '反对'). For English output, use concise English schema names. Do NOT output any separate display-name fields. Attribute names MUST remain English snake_case. Descriptions, examples, attribute descriptions, and analysis_summary fields MUST use the specified language above."
         messages = [
@@ -224,7 +224,7 @@ class OntologyGenerator:
         # 注意：推理类模型（如 deepseek-v4-pro）的思考过程也计入 max_tokens，
         # 复杂的本体生成任务需要更大的输出预算，否则 JSON 会被截断导致解析失败。
         result = self.llm_client.chat_json(
-            messages=messages, temperature=0.3, max_tokens=Config.ONTOLOGY_MAX_TOKENS
+            messages=messages, temperature=0.3, max_tokens=settings.ontology_max_tokens
         )
 
         # 验证和后处理
@@ -265,7 +265,7 @@ class OntologyGenerator:
 {additional_context}
 """
 
-        entity_total = Config.ONTOLOGY_ENTITY_TYPES
+        entity_total = settings.ontology_entity_types
         message += f"""
 请根据以上内容，设计适合社会舆论模拟的实体类型和关系类型。
 
@@ -329,8 +329,8 @@ class OntologyGenerator:
 
         # 图谱 schema 限制（可配置）：实体类型总数固定为 ONTOLOGY_ENTITY_TYPES（含 2 个兜底），
         # 边类型最多 ONTOLOGY_EDGE_TYPES_MAX。LLM 多给会从末尾截断。
-        MAX_ENTITY_TYPES = Config.ONTOLOGY_ENTITY_TYPES
-        MAX_EDGE_TYPES = Config.ONTOLOGY_EDGE_TYPES_MAX
+        MAX_ENTITY_TYPES = settings.ontology_entity_types
+        MAX_EDGE_TYPES = settings.ontology_edge_types_max
 
         # 去重：按 name 去重，保留首次出现的
         seen_names = set()

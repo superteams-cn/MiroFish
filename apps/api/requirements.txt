@@ -5,9 +5,10 @@
 # Install: pip install -r requirements.txt
 # ===========================================
 
-# ============= 核心框架 =============
-flask>=3.0.0
-flask-cors>=6.0.0
+# ============= 核心框架（FastAPI）=============
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+python-multipart>=0.0.9
 
 # ============= LLM 相关 =============
 # OpenAI SDK（统一使用 OpenAI 格式调用 LLM）
@@ -33,5 +34,6 @@ chardet>=5.0.0
 # 环境变量加载
 python-dotenv>=1.0.0
 
-# 数据验证
+# 数据验证 + 配置管理
 pydantic>=2.0.0
+pydantic-settings>=2.0.0

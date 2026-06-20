@@ -18,9 +18,9 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
-from ..config import Config
 from ..db import session_scope
 from ..db_models import ReportRow
+from ..settings import settings
 from ..utils.llm_client import LLMClient
 from ..utils.locale import get_language_instruction, t
 from ..utils.logger import get_logger
@@ -48,7 +48,7 @@ class ReportLogger:
         """
         self.report_id = report_id
         self.log_file_path = os.path.join(
-            Config.UPLOAD_FOLDER, "reports", report_id, "agent_log.jsonl"
+            settings.upload_folder, "reports", report_id, "agent_log.jsonl"
         )
         self.start_time = datetime.now()
         self._ensure_log_file()
@@ -305,7 +305,7 @@ class ReportConsoleLogger:
         """
         self.report_id = report_id
         self.log_file_path = os.path.join(
-            Config.UPLOAD_FOLDER, "reports", report_id, "console_log.txt"
+            settings.upload_folder, "reports", report_id, "console_log.txt"
         )
         self._ensure_log_file()
         self._file_handler = None
@@ -1275,7 +1275,7 @@ class ReportAgent:
 
             # 调用LLM
             response = self.llm.chat(
-                messages=messages, temperature=0.5, max_tokens=Config.REPORT_AGENT_MAX_TOKENS
+                messages=messages, temperature=0.5, max_tokens=settings.report_agent_max_tokens
             )
 
             # 检查 LLM 返回是否为 None（API 异常或内容为空）
@@ -1505,7 +1505,7 @@ class ReportAgent:
         messages.append({"role": "user", "content": REACT_FORCE_FINAL_MSG})
 
         response = self.llm.chat(
-            messages=messages, temperature=0.5, max_tokens=Config.REPORT_AGENT_MAX_TOKENS
+            messages=messages, temperature=0.5, max_tokens=settings.report_agent_max_tokens
         )
 
         # 检查强制收尾时 LLM 返回是否为 None
@@ -1900,7 +1900,7 @@ class ReportManager:
     """
 
     # 报告本地目录（仅承载生成期 append 日志：agent_log.jsonl / console_log.txt）
-    REPORTS_DIR = os.path.join(Config.UPLOAD_FOLDER, "reports")
+    REPORTS_DIR = os.path.join(settings.upload_folder, "reports")
 
     @classmethod
     def _get_report_folder(cls, report_id: str) -> str:

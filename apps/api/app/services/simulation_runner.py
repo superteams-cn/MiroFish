@@ -1689,9 +1689,7 @@ class SimulationRunner:
     def register_cleanup(cls):
         """注册进程退出钩子：退出/热重载时「松手」（detach），不杀子进程、不误置 stopped。
 
-        在 FastAPI lifespan startup 调用。区别于旧实现：去掉已失效的 Werkzeug 判断
-        （uvicorn 下 WERKZEUG_RUN_MAIN/FLASK_DEBUG 永不存在，旧逻辑形同虚设），
-        并把退出动作从「杀掉」改为「松手」。
+        在 FastAPI lifespan startup 调用。退出动作为「松手」而非「杀掉」。
         """
         global _cleanup_registered
 
