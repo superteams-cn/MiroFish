@@ -126,7 +126,10 @@
     "generatedEntityTypes": "已生成的实体类型",
     "generatedRelationTypes": "已生成的关系类型",
     "rebuildGraph": "重新构建图谱",
-    "rebuildGraphHint": "重新抽取并构建图谱(可恢复卡住或不满意的结果)"
+    "rebuildGraphHint": "重新抽取并构建图谱(可恢复卡住或不满意的结果)",
+    "rebuildEnv": "重建环境",
+    "rebuildEnvHint": "丢弃已有模拟环境，基于当前图谱重新搭建一个全新环境",
+    "rebuildEnvConfirm": "将基于当前图谱重新创建一个全新的模拟环境，已有环境不会被复用。确定继续吗？"
   },
   "workflowStatus": {
     "ready": "就绪",

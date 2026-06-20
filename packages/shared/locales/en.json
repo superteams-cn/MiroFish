@@ -126,7 +126,10 @@
     "generatedEntityTypes": "GENERATED ENTITY TYPES",
     "generatedRelationTypes": "GENERATED RELATION TYPES",
     "rebuildGraph": "Rebuild graph",
-    "rebuildGraphHint": "Re-extract and rebuild the graph (recover stuck or unsatisfactory results)"
+    "rebuildGraphHint": "Re-extract and rebuild the graph (recover stuck or unsatisfactory results)",
+    "rebuildEnv": "Rebuild environment",
+    "rebuildEnvHint": "Discard the existing simulation environment and build a fresh one from the current graph",
+    "rebuildEnvConfirm": "This will create a brand-new simulation environment from the current graph; the existing one will not be reused. Continue?"
   },
   "workflowStatus": {
     "ready": "Ready",
