@@ -11,6 +11,7 @@ const SimulationPage = lazy(() => import('@/pages/SimulationPage'))
 const SimulationRunPage = lazy(() => import('@/pages/SimulationRunPage'))
 const ReportPage = lazy(() => import('@/pages/ReportPage'))
 const InteractionPage = lazy(() => import('@/pages/InteractionPage'))
+const ResetPasswordPage = lazy(() => import('@/pages/ResetPasswordPage'))
 
 /** 路由懒加载时的全屏加载占位。 */
 function PageLoader() {
@@ -38,4 +39,5 @@ export const router = createBrowserRouter([
   { path: '/simulation/:simulationId/start', element: withSuspense(<SimulationRunPage />) },
   { path: '/report/:reportId', element: withSuspense(<ReportPage />) },
   { path: '/interaction/:reportId', element: withSuspense(<InteractionPage />) },
+  { path: '/reset-password', element: withSuspense(<ResetPasswordPage />) },
 ])

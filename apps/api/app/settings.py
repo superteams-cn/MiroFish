@@ -54,6 +54,25 @@ class Settings(BaseSettings):
     neo4j_user: str = "neo4j"
     neo4j_password: str = "superfish_neo4j"
 
+    # ===== 用户体系 / 鉴权（JWT）=====
+    # 上线前务必通过环境变量 JWT_SECRET 覆盖为高强度随机值；默认值仅供本地开发。
+    jwt_secret: str = "dev-insecure-change-me"
+    jwt_algorithm: str = "HS256"
+    jwt_access_ttl_min: int = 30
+    jwt_refresh_ttl_days: int = 14
+    jwt_reset_ttl_min: int = 30
+
+    # ===== 邮件发送（找回密码/邮箱验证）=====
+    # 未配置 smtp_host 时走「开发桩」：邮件内容打印到后端日志，便于本地联调；
+    # 上线只需配置 SMTP（或换第三方），业务代码无需改动。
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    email_from: str = "SuperFish <no-reply@superfish.local>"
+    # 用于拼接邮件里的重置链接（指向前端路由 /reset-password）
+    web_base_url: str = "http://localhost:5180"
+
     # ===== Redis（缓存/队列）=====
     # 源码部署默认 localhost；docker compose 中由 compose 注入 redis://redis:6379/0
     redis_url: str = "redis://localhost:6379/0"

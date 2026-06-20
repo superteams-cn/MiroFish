@@ -2,9 +2,12 @@
 FastAPI 公共依赖项
 """
 
-from fastapi import Header
+from fastapi import Header, HTTPException
 
-from .utils.locale import coerce_locale, set_locale
+from .db import session_scope
+from .db_models import UserRow
+from .utils.locale import coerce_locale, set_locale, t
+from .utils.security import decode_token
 
 
 async def use_locale(accept_language: str | None = Header(default=None)):
@@ -14,3 +17,31 @@ async def use_locale(accept_language: str | None = Header(default=None)):
     若请求派生后台线程，需在线程入口处再次 set_locale(get_locale())。
     """
     set_locale(coerce_locale(accept_language))
+
+
+def get_current_user(authorization: str | None = Header(default=None)) -> dict:
+    """请求级依赖：校验 `Authorization: Bearer <access token>` 并返回当前用户。
+
+    失败统一抛 401（缺失/格式错/过期/签名错/用户不存在或被禁用）。
+    返回精简 dict，避免 ORM 对象在会话关闭后的 detached 访问。
+    """
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(status_code=401, detail=t("auth.notAuthenticated"))
+    token = authorization.split(" ", 1)[1].strip()
+    try:
+        payload = decode_token(token, expected_type="access")
+    except Exception as e:  # jwt.ExpiredSignatureError / InvalidTokenError 等
+        raise HTTPException(status_code=401, detail=t("auth.invalidToken")) from e
+
+    user_id = payload.get("sub")
+    with session_scope() as session:
+        user = session.get(UserRow, user_id)
+        if user is None or user.status != "active":
+            raise HTTPException(status_code=401, detail=t("auth.invalidToken"))
+        return {
+            "user_id": user.user_id,
+            "email": user.email,
+            "display_name": user.display_name,
+            "status": user.status,
+            "email_verified": user.email_verified,
+        }

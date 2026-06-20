@@ -14,6 +14,25 @@ from .db import Base
 from .settings import settings
 
 
+class UserRow(Base):
+    """用户账户表（邮箱+密码，纯个人账户）。
+
+    密码以 PBKDF2 哈希串存储（见 utils/security.py），绝不存明文。
+    """
+
+    __tablename__ = "users"
+
+    user_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    password_hash: Mapped[str] = mapped_column(String(255), default="")
+    display_name: Mapped[str] = mapped_column(String(64), default="")
+    # active / disabled
+    status: Mapped[str] = mapped_column(String(16), index=True, default="active")
+    email_verified: Mapped[bool] = mapped_column(default=False)
+    created_at: Mapped[str] = mapped_column(String(40), default="", index=True)
+    updated_at: Mapped[str] = mapped_column(String(40), default="")
+
+
 class ProjectRow(Base):
     """项目元数据表。"""
 

@@ -8,6 +8,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { LanguageSwitcher } from '@/components/LanguageSwitcher'
 import { ThemeSwitcher } from '@/components/ThemeSwitcher'
+import { AuthButton } from '@/components/auth/AuthButton'
 import { HistoryDatabase } from '@/components/HistoryDatabase'
 import { Logo } from '@/components/common/Logo'
 import { setPendingUpload } from '@/stores/pendingUpload'
@@ -163,6 +164,7 @@ export default function HomePage() {
           </Button>
           <ThemeSwitcher />
           <LanguageSwitcher />
+          <AuthButton />
         </div>
       </header>
 

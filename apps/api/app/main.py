@@ -16,6 +16,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from .routers import auth as auth_router
 from .routers import graph as graph_router
 from .routers import report as report_router
 from .routers import simulation as simulation_router
@@ -89,6 +90,7 @@ def create_app() -> FastAPI:
         return {"status": "ok", "service": "SuperFish Backend"}
 
     # 业务路由（全部已迁移为原生 FastAPI）
+    app.include_router(auth_router.router, prefix="/api/auth", tags=["auth"])
     app.include_router(graph_router.router, prefix="/api/graph", tags=["graph"])
     app.include_router(report_router.router, prefix="/api/report", tags=["report"])
     app.include_router(simulation_router.router, prefix="/api/simulation", tags=["simulation"])

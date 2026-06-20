@@ -1,7 +1,8 @@
-import axios, { type AxiosRequestConfig } from 'axios'
+import axios, { type AxiosRequestConfig, type InternalAxiosRequestConfig } from 'axios'
 import i18n from '@/i18n'
 
 import type { ApiEnvelope } from './types'
+import { clearTokens, getAccessToken, getRefreshToken, setTokens } from '@/lib/auth-storage'
 
 // 创建 axios 实例
 const service = axios.create({
@@ -12,10 +13,18 @@ const service = axios.create({
   },
 })
 
-// 请求拦截器：附带当前语言
+// 401（会话失效且刷新失败）时由 AuthProvider 注册回调：清状态 + 弹登录框。
+let unauthorizedHandler: (() => void) | null = null
+export function setUnauthorizedHandler(fn: (() => void) | null) {
+  unauthorizedHandler = fn
+}
+
+// 请求拦截器：附带当前语言 + Bearer 令牌
 service.interceptors.request.use(
   (config) => {
     config.headers['Accept-Language'] = i18n.language
+    const token = getAccessToken()
+    if (token) config.headers['Authorization'] = `Bearer ${token}`
     return config
   },
   (error) => {
@@ -23,6 +32,31 @@ service.interceptors.request.use(
     return Promise.reject(error)
   },
 )
+
+// 单飞刷新：并发 401 只发一次 refresh，其余等待同一结果。
+let refreshPromise: Promise<boolean> | null = null
+async function tryRefreshToken(): Promise<boolean> {
+  const refreshToken = getRefreshToken()
+  if (!refreshToken) return false
+  if (!refreshPromise) {
+    refreshPromise = axios
+      .create({ baseURL: service.defaults.baseURL })
+      .post('/api/auth/refresh', { refresh_token: refreshToken })
+      .then((resp) => {
+        const data = resp.data?.data
+        if (data?.access_token) {
+          setTokens(data.access_token, data.refresh_token)
+          return true
+        }
+        return false
+      })
+      .catch(() => false)
+      .finally(() => {
+        refreshPromise = null
+      })
+  }
+  return refreshPromise
+}
 
 // 响应拦截器：解包 data 并对 success=false 抛错
 service.interceptors.response.use(
@@ -34,7 +68,28 @@ service.interceptors.response.use(
     }
     return res
   },
-  (error) => {
+  async (error) => {
+    const original = error.config as
+      | (InternalAxiosRequestConfig & { __isRetry?: boolean })
+      | undefined
+    const status = error.response?.status
+    const url = original?.url || ''
+    // 鉴权接口自身的 401（如密码错误）属正常表单错误，交给调用方，不触发刷新/弹框。
+    const isAuthEndpoint = url.includes('/api/auth/')
+
+    if (status === 401 && original && !isAuthEndpoint && !original.__isRetry) {
+      const refreshed = await tryRefreshToken()
+      if (refreshed) {
+        original.__isRetry = true
+        original.headers = original.headers || {}
+        const token = getAccessToken()
+        if (token) original.headers['Authorization'] = `Bearer ${token}`
+        return service(original)
+      }
+      clearTokens()
+      unauthorizedHandler?.()
+    }
+
     console.error('Response error:', error)
     if (error.code === 'ECONNABORTED' && error.message.includes('timeout')) {
       console.error('Request timeout')
