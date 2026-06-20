@@ -48,7 +48,7 @@ export function ProfileModal({ profile, onClose }: Props) {
 
   return (
     <Dialog open={!!profile} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-h-[85vh] overflow-y-auto">
+      <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
         {profile && (
           <>
             <DialogHeader>
