@@ -1,45 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import * as d3 from 'd3'
-import { RefreshCw, Maximize2, X, Network, Tag, ChevronDown, Info } from 'lucide-react'
+import { RefreshCw, Maximize2, X, Network, Tag, Info } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/common/EmptyState'
-import { cn } from '@/lib/utils'
+import { GraphLegend, GraphRealtimeHint } from '@/components/graph/GraphOverlays'
+import { GraphDetailShell } from '@/components/graph/GraphDetailShell'
+import { NodeDetail, EdgeDetail } from '@/components/graph/GraphDetailContent'
+import { nodeType, type GraphData, type GraphEdge, type GraphNode } from '@/lib/graph-types'
 
-// ===== 图谱数据类型（与后端 /api/graph/data 返回结构一致）=====
-export interface GraphNode {
-  // 后端实际返回 uuid，旧数据可能用 id，两者择一
-  uuid?: string
-  id?: string
-  name?: string
-  labels?: string[]
-  summary?: string
-  attributes?: Record<string, unknown>
-  created_at?: string | null
-  [key: string]: unknown
-}
-export interface GraphEdge {
-  uuid?: string
-  source_node_uuid: string
-  target_node_uuid: string
-  source_node_name?: string
-  target_node_name?: string
-  fact?: string
-  fact_type?: string
-  name?: string
-  attributes?: Record<string, unknown>
-  episodes?: string[]
-  created_at?: string | null
-  valid_at?: string | null
-  [key: string]: unknown
-}
-export interface GraphData {
-  nodes?: GraphNode[]
-  edges?: GraphEdge[]
-  node_count?: number
-  edge_count?: number
-}
+// 兼容历史引用路径：这些图谱类型过去由本文件导出，现统一定义于 lib/graph-types。
+export type { GraphData, GraphEdge, GraphNode } from '@/lib/graph-types'
 
 interface GraphPanelProps {
   graphData: GraphData | null
@@ -74,11 +46,6 @@ type SelectedNode = { kind: 'node'; data: GraphNode; entityType: string; color: 
 type SelectedEdge = { kind: 'edge'; data: Record<string, unknown> }
 type Selected = SelectedNode | SelectedEdge | null
 
-// 取节点类型：labels 中第一个非 Entity 的标签
-function nodeType(node: GraphNode): string {
-  return node.labels?.find((l) => l !== 'Entity') || 'Entity'
-}
-
 const COLORS = [
   '#FF6B35',
   '#004E89',
@@ -95,24 +62,6 @@ const COLORS = [
 const EDGE_COLOR = '#cbd5e1'
 const EDGE_HL = '#E91E63'
 const NODE_HL = '#E91E63'
-
-function str(v: unknown): string {
-  if (v === null || v === undefined) return ''
-  return String(v)
-}
-
-function formatDateTime(dateStr?: string | null): string {
-  if (!dateStr) return ''
-  const date = new Date(dateStr)
-  if (Number.isNaN(date.getTime())) return dateStr
-  return date.toLocaleString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  })
-}
 
 /** 知识图谱可视化面板（d3 力导向图）。 */
 export function GraphPanel({
@@ -701,34 +650,14 @@ export function GraphPanel({
       </div>
 
       {/* 图例（左下，含计数） */}
-      {hasData && typeColors.size > 0 && (
-        <div className="bg-background/90 absolute bottom-3 left-3 z-10 max-w-[320px] rounded-md border p-2.5 text-xs shadow-sm backdrop-blur">
-          <div className="text-muted-foreground mb-1.5 font-semibold uppercase tracking-wide">
-            {t('graph.entityTypes')}
-          </div>
-          <div className="flex flex-wrap gap-x-3 gap-y-1">
-            {Array.from(typeColors.entries()).map(([type, color]) => (
-              <div key={type} className="flex items-center gap-1.5">
-                <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: color }} />
-                <span className="truncate">{type}</span>
-              </div>
-            ))}
-          </div>
-          <div className="text-muted-foreground mt-1.5 border-t pt-1.5">
-            {nodeCount} nodes · {edgeCount} edges
-          </div>
-        </div>
+      {hasData && (
+        <GraphLegend typeColors={typeColors} nodeCount={nodeCount} edgeCount={edgeCount} />
       )}
 
       <svg ref={svgRef} className="text-foreground h-full w-full" />
 
       {/* 实时更新提示 */}
-      {hasData && hint && (
-        <div className="bg-foreground/75 text-background absolute bottom-4 left-1/2 z-10 flex -translate-x-1/2 items-center gap-2 rounded-full px-4 py-2 text-xs font-medium shadow-lg backdrop-blur">
-          <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" />
-          {hint}
-        </div>
-      )}
+      {hasData && hint && <GraphRealtimeHint hint={hint} />}
 
       {/* 模拟结束提示（可关闭） */}
       {!hint && showFinishedHint && (
@@ -758,215 +687,21 @@ export function GraphPanel({
 
       {/* 详情面板 */}
       {selected && (
-        <div className="bg-background absolute right-3 top-16 z-20 flex max-h-[calc(100%-5rem)] w-80 flex-col rounded-lg border shadow-xl">
-          <div className="bg-muted/40 flex items-center justify-between gap-2 border-b px-4 py-3">
-            <span className="text-sm font-semibold">
-              {selected.kind === 'node' ? t('graph.nodeDetails') : t('graph.relationship')}
-            </span>
-            <div className="flex items-center gap-2">
-              {selected.kind === 'node' && (
-                <span
-                  className="rounded-full px-2 py-0.5 text-[11px] font-medium text-white"
-                  style={{ backgroundColor: selected.color }}
-                >
-                  {selected.entityType}
-                </span>
-              )}
-              <button
-                onClick={() => setSelected(null)}
-                className="text-muted-foreground hover:text-foreground"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-          </div>
-
-          <div className="flex-1 overflow-y-auto p-4 text-sm">
-            {selected.kind === 'node' ? (
-              <NodeDetail data={selected.data} t={t} />
-            ) : (
-              <EdgeDetail
-                data={selected.data}
-                expanded={expandedLoops}
-                onToggle={toggleLoop}
-                t={t}
-              />
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ===== 详情子组件 =====
-type TFn = ReturnType<typeof useTranslation>['t']
-
-function Row({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
-  if (!value) return null
-  return (
-    <div className="mb-2.5 flex flex-wrap gap-x-2">
-      <span className="text-muted-foreground min-w-[72px] text-xs font-medium">{label}:</span>
-      <span className={cn('flex-1 break-words', mono && 'font-mono text-xs')}>{value}</span>
-    </div>
-  )
-}
-
-function NodeDetail({ data, t }: { data: GraphNode; t: TFn }) {
-  const attrs = (data.attributes ?? {}) as Record<string, unknown>
-  const attrEntries = Object.entries(attrs).filter(([k]) => k !== 'summary')
-  const labels = data.labels ?? []
-  return (
-    <div>
-      <Row label={t('graph.fieldName')} value={str(data.name)} />
-      <Row label="UUID" value={str(data.uuid ?? data.id)} mono />
-      <Row label={t('graph.fieldCreated')} value={formatDateTime(data.created_at)} />
-
-      {attrEntries.length > 0 && (
-        <div className="mt-4 border-t pt-3">
-          <div className="text-muted-foreground mb-2 text-xs font-semibold">
-            {t('graph.fieldProperties')}
-          </div>
-          <div className="flex flex-col gap-2">
-            {attrEntries.map(([k, v]) => (
-              <div key={k} className="flex gap-2 text-xs">
-                <span className="text-muted-foreground min-w-[88px] font-medium">{k}:</span>
-                <span className="flex-1 break-words">{str(v) || 'None'}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {data.summary && (
-        <div className="mt-4 border-t pt-3">
-          <div className="text-muted-foreground mb-2 text-xs font-semibold">
-            {t('graph.fieldSummary')}
-          </div>
-          <p className="text-muted-foreground text-xs leading-relaxed">{str(data.summary)}</p>
-        </div>
-      )}
-
-      {labels.length > 0 && (
-        <div className="mt-4 border-t pt-3">
-          <div className="text-muted-foreground mb-2 text-xs font-semibold">
-            {t('graph.fieldLabels')}
-          </div>
-          <div className="flex flex-wrap gap-1.5">
-            {labels.map((l) => (
-              <span key={l} className="bg-muted rounded-full border px-2.5 py-0.5 text-[11px]">
-                {l}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-function EdgeDetail({
-  data,
-  expanded,
-  onToggle,
-  t,
-}: {
-  data: Record<string, unknown>
-  expanded: Set<string>
-  onToggle: (id: string) => void
-  t: TFn
-}) {
-  // 自环组
-  if (data.isSelfLoopGroup) {
-    const loops = (data.selfLoopEdges as GraphEdge[]) ?? []
-    return (
-      <div>
-        <div className="mb-3 flex items-center gap-2 rounded-md border border-emerald-100 bg-emerald-50 px-3 py-2 text-sm font-medium">
-          {str(data.source_name)} · {t('graph.selfRelations')}
-          <span className="bg-background text-muted-foreground ml-auto rounded-full px-2 py-0.5 text-xs">
-            {str(data.selfLoopCount)} {t('common.items')}
-          </span>
-        </div>
-        <div className="flex flex-col gap-2">
-          {loops.map((loop, idx) => {
-            const id = loop.uuid || String(idx)
-            const open = expanded.has(id)
-            return (
-              <div key={id} className="bg-muted/40 overflow-hidden rounded-md border">
-                <button
-                  onClick={() => onToggle(id)}
-                  className="hover:bg-muted flex w-full items-center gap-2 px-3 py-2 text-left"
-                >
-                  <span className="text-muted-foreground bg-background rounded px-1.5 py-0.5 text-[10px] font-semibold">
-                    #{idx + 1}
-                  </span>
-                  <span className="flex-1 truncate text-xs font-medium">
-                    {loop.name || loop.fact_type || 'RELATED'}
-                  </span>
-                  <ChevronDown
-                    className={cn('h-3.5 w-3.5 transition-transform', open && 'rotate-180')}
-                  />
-                </button>
-                {open && (
-                  <div className="border-t px-3 py-2">
-                    <Row label="UUID" value={str(loop.uuid)} mono />
-                    <Row label={t('graph.fieldFact')} value={str(loop.fact)} />
-                    <Row label={t('graph.fieldType')} value={str(loop.fact_type)} />
-                    <Row label={t('graph.fieldCreated')} value={formatDateTime(loop.created_at)} />
-                    {(loop.episodes as string[] | undefined)?.length ? (
-                      <div className="mt-2">
-                        <div className="text-muted-foreground mb-1 text-xs font-semibold">
-                          {t('graph.fieldEpisodes')}
-                        </div>
-                        <div className="flex flex-wrap gap-1">
-                          {(loop.episodes as string[]).map((ep) => (
-                            <span
-                              key={ep}
-                              className="bg-background rounded border px-1.5 py-0.5 font-mono text-[10px]"
-                            >
-                              {ep}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    ) : null}
-                  </div>
-                )}
-              </div>
-            )
-          })}
-        </div>
-      </div>
-    )
-  }
-
-  // 普通边
-  const episodes = (data.episodes as string[]) ?? []
-  return (
-    <div>
-      <div className="bg-muted/50 mb-3 rounded-md px-3 py-2 text-sm font-medium leading-relaxed">
-        {str(data.source_name)} → {str(data.name) || 'RELATED_TO'} → {str(data.target_name)}
-      </div>
-      <Row label="UUID" value={str(data.uuid)} mono />
-      <Row label={t('graph.fieldLabel')} value={str(data.name) || 'RELATED_TO'} />
-      <Row label={t('graph.fieldType')} value={str(data.fact_type) || 'Unknown'} />
-      <Row label={t('graph.fieldFact')} value={str(data.fact)} />
-      <Row label={t('graph.fieldCreated')} value={formatDateTime(str(data.created_at))} />
-      <Row label={t('graph.fieldValidFrom')} value={formatDateTime(str(data.valid_at))} />
-
-      {episodes.length > 0 && (
-        <div className="mt-4 border-t pt-3">
-          <div className="text-muted-foreground mb-2 text-xs font-semibold">
-            {t('graph.fieldEpisodes')}
-          </div>
-          <div className="flex flex-col gap-1.5">
-            {episodes.map((ep) => (
-              <span key={ep} className="bg-muted rounded border px-2 py-1 font-mono text-[10px]">
-                {ep}
-              </span>
-            ))}
-          </div>
-        </div>
+        <GraphDetailShell
+          title={selected.kind === 'node' ? t('graph.nodeDetails') : t('graph.relationship')}
+          badge={
+            selected.kind === 'node'
+              ? { label: selected.entityType, color: selected.color }
+              : undefined
+          }
+          onClose={() => setSelected(null)}
+        >
+          {selected.kind === 'node' ? (
+            <NodeDetail data={selected.data} t={t} />
+          ) : (
+            <EdgeDetail data={selected.data} expanded={expandedLoops} onToggle={toggleLoop} t={t} />
+          )}
+        </GraphDetailShell>
       )}
     </div>
   )

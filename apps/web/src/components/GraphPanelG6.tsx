@@ -10,7 +10,6 @@ import {
   RefreshCw,
   Search,
   Network,
-  X,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -22,8 +21,10 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { EmptyState } from '@/components/common/EmptyState'
+import { GraphLegend, GraphRealtimeHint } from '@/components/graph/GraphOverlays'
+import { GraphDetailShell } from '@/components/graph/GraphDetailShell'
 import { buildGraphView, type GraphViewEdge } from '@/lib/graph-view'
-import type { GraphData, GraphNode } from '@/components/GraphPanel'
+import type { GraphData, GraphNode } from '@/lib/graph-types'
 
 type LayoutKind = 'd3-force' | 'radial' | 'concentric' | 'antv-dagre'
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -742,32 +743,16 @@ export function GraphPanelG6({
       )}
 
       {/* 图例（左下） */}
-      {hasData && typeColors.size > 0 && (
-        <div className="bg-background/90 absolute bottom-3 left-3 z-10 max-w-[320px] rounded-md border p-2.5 text-xs shadow-sm backdrop-blur">
-          <div className="text-muted-foreground mb-1.5 font-semibold uppercase tracking-wide">
-            {t('graph.entityTypes')}
-          </div>
-          <div className="flex flex-wrap gap-x-3 gap-y-1">
-            {Array.from(typeColors.entries()).map(([type, color]) => (
-              <div key={type} className="flex items-center gap-1.5">
-                <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: color }} />
-                <span className="truncate">{type}</span>
-              </div>
-            ))}
-          </div>
-          <div className="text-muted-foreground mt-1.5 border-t pt-1.5">
-            {view.nodes.length} nodes · {view.edges.length} edges
-          </div>
-        </div>
+      {hasData && (
+        <GraphLegend
+          typeColors={typeColors}
+          nodeCount={view.nodes.length}
+          edgeCount={view.edges.length}
+        />
       )}
 
       {/* 实时更新提示 */}
-      {hasData && hint && (
-        <div className="bg-foreground/75 text-background absolute bottom-4 left-1/2 z-10 flex -translate-x-1/2 items-center gap-2 rounded-full px-4 py-2 text-xs font-medium shadow-lg backdrop-blur">
-          <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" />
-          {hint}
-        </div>
-      )}
+      {hasData && hint && <GraphRealtimeHint hint={hint} />}
 
       {/* 空状态 */}
       {!hasData && !loading && (
@@ -782,52 +767,36 @@ export function GraphPanelG6({
 
       {/* 详情面板 */}
       {selected && (
-        <div className="bg-background absolute right-3 top-16 z-30 flex max-h-[calc(100%-5rem)] w-80 flex-col rounded-lg border shadow-xl">
-          <div className="bg-muted/40 flex items-center justify-between gap-2 border-b px-4 py-3">
-            <span className="text-sm font-semibold">
-              {selected.kind === 'node' ? t('graph.nodeDetails') : t('graph.relationship')}
-            </span>
-            <div className="flex items-center gap-2">
-              {selected.kind === 'node' && (
-                <span
-                  className="rounded-full px-2 py-0.5 text-[11px] font-medium text-white"
-                  style={{ backgroundColor: selected.color }}
-                >
-                  {selected.type}
-                </span>
-              )}
-              <button
-                onClick={() => setSelected(null)}
-                className="text-muted-foreground hover:text-foreground"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-          </div>
-          <div className="flex-1 overflow-y-auto p-4 text-sm">
-            {selected.kind === 'node' ? (
-              <DetailRows
-                rows={[
-                  [t('graph.fieldName'), selected.data.name],
-                  ['UUID', selected.data.uuid ?? selected.data.id],
-                  [t('graph.fieldSummary'), selected.data.summary],
-                ]}
-              />
-            ) : (
-              <DetailRows
-                rows={[
-                  [
-                    t('graph.relationship'),
-                    `${selected.edge.sourceLabel} —${selected.edge.predicate}→ ${selected.edge.targetLabel}`,
-                  ],
-                  ['UUID', selected.edge.raw.uuid],
-                  [t('graph.fieldFact'), selected.edge.raw.fact],
-                  [t('graph.fieldType'), selected.edge.raw.fact_type],
-                ]}
-              />
-            )}
-          </div>
-        </div>
+        <GraphDetailShell
+          title={selected.kind === 'node' ? t('graph.nodeDetails') : t('graph.relationship')}
+          badge={
+            selected.kind === 'node' ? { label: selected.type, color: selected.color } : undefined
+          }
+          onClose={() => setSelected(null)}
+          className="z-30"
+        >
+          {selected.kind === 'node' ? (
+            <DetailRows
+              rows={[
+                [t('graph.fieldName'), selected.data.name],
+                ['UUID', selected.data.uuid ?? selected.data.id],
+                [t('graph.fieldSummary'), selected.data.summary],
+              ]}
+            />
+          ) : (
+            <DetailRows
+              rows={[
+                [
+                  t('graph.relationship'),
+                  `${selected.edge.sourceLabel} —${selected.edge.predicate}→ ${selected.edge.targetLabel}`,
+                ],
+                ['UUID', selected.edge.raw.uuid],
+                [t('graph.fieldFact'), selected.edge.raw.fact],
+                [t('graph.fieldType'), selected.edge.raw.fact_type],
+              ]}
+            />
+          )}
+        </GraphDetailShell>
       )}
     </div>
   )
