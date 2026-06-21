@@ -509,9 +509,11 @@ class _FakeIPCClient:
 
 @pytest.fixture
 def fake_ipc(monkeypatch):
-    """替换 simulation_runner 内引用的 SimulationIPCClient 为测试替身。"""
+    """替换 interview_service 内引用的 SimulationIPCClient 为测试替身（采访已从 runner 抽出）。"""
     _FakeIPCClient.instances.clear()
-    monkeypatch.setattr("app.services.simulation_runner.SimulationIPCClient", _FakeIPCClient)
+    monkeypatch.setattr(
+        "app.services.simulation.interview_service.SimulationIPCClient", _FakeIPCClient
+    )
     return _FakeIPCClient
 
 

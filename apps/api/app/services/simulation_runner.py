@@ -19,11 +19,10 @@ from typing import Any
 from ..core.errors import AppError
 from ..core.logger import get_logger
 from ..domain.run_state import AgentAction, RoundSummary, RunnerStatus, SimulationRunState
-from ..repositories.interview_trace_repo import InterviewTraceRepository
 from ..repositories.run_state_repo import RunStateRepository
 from ..utils.locale import get_locale, set_locale
 from .graph_memory_updater import GraphMemoryManager
-from .simulation import log_reader
+from .simulation import interview_service, log_reader
 from .simulation import process_control as pc
 from .simulation_ipc import CommandType, SimulationIPCClient
 
@@ -1489,61 +1488,15 @@ class SimulationRunner:
         platform: str | None = None,
         timeout: float = 60.0,
     ) -> dict[str, Any]:
-        """
-        采访单个Agent
-
-        Args:
-            simulation_id: 模拟ID
-            agent_id: Agent ID
-            prompt: 采访问题
-            platform: 指定平台（可选）
-                - "twitter": 只采访Twitter平台
-                - "reddit": 只采访Reddit平台
-                - None: 双平台模拟时同时采访两个平台，返回整合结果
-            timeout: 超时时间（秒）
-
-        Returns:
-            采访结果字典
-
-        Raises:
-            ValueError: 模拟不存在或环境未运行
-            TimeoutError: 等待响应超时
-        """
-        sim_dir = os.path.join(cls.RUN_STATE_DIR, simulation_id)
-        if not os.path.exists(sim_dir):
-            raise AppError(f"模拟不存在: {simulation_id}", status=404)
-
-        ipc_client = SimulationIPCClient(sim_dir)
-
-        if not ipc_client.check_env_alive():
-            raise AppError(
-                f"模拟环境未运行或已关闭，无法执行Interview: {simulation_id}", status=409
-            )
-
-        logger.info(
-            f"发送Interview命令: simulation_id={simulation_id}, agent_id={agent_id}, platform={platform}"
+        """采访单个 Agent（薄委托 interview_service）。"""
+        return interview_service.interview_agent(
+            cls.RUN_STATE_DIR,
+            simulation_id,
+            agent_id,
+            prompt,
+            platform=platform,
+            timeout=timeout,
         )
-
-        response = ipc_client.send_interview(
-            agent_id=agent_id, prompt=prompt, platform=platform, timeout=timeout
-        )
-
-        if response.status.value == "completed":
-            return {
-                "success": True,
-                "agent_id": agent_id,
-                "prompt": prompt,
-                "result": response.result,
-                "timestamp": response.timestamp,
-            }
-        else:
-            return {
-                "success": False,
-                "agent_id": agent_id,
-                "prompt": prompt,
-                "error": response.error,
-                "timestamp": response.timestamp,
-            }
 
     @classmethod
     def interview_agents_batch(
@@ -1553,109 +1506,26 @@ class SimulationRunner:
         platform: str | None = None,
         timeout: float = 120.0,
     ) -> dict[str, Any]:
-        """
-        批量采访多个Agent
-
-        Args:
-            simulation_id: 模拟ID
-            interviews: 采访列表，每个元素包含 {"agent_id": int, "prompt": str, "platform": str(可选)}
-            platform: 默认平台（可选，会被每个采访项的platform覆盖）
-                - "twitter": 默认只采访Twitter平台
-                - "reddit": 默认只采访Reddit平台
-                - None: 双平台模拟时每个Agent同时采访两个平台
-            timeout: 超时时间（秒）
-
-        Returns:
-            批量采访结果字典
-
-        Raises:
-            ValueError: 模拟不存在或环境未运行
-            TimeoutError: 等待响应超时
-        """
-        sim_dir = os.path.join(cls.RUN_STATE_DIR, simulation_id)
-        if not os.path.exists(sim_dir):
-            raise AppError(f"模拟不存在: {simulation_id}", status=404)
-
-        ipc_client = SimulationIPCClient(sim_dir)
-
-        if not ipc_client.check_env_alive():
-            raise AppError(
-                f"模拟环境未运行或已关闭，无法执行Interview: {simulation_id}", status=409
-            )
-
-        logger.info(
-            f"发送批量Interview命令: simulation_id={simulation_id}, count={len(interviews)}, platform={platform}"
+        """批量采访多个 Agent（薄委托 interview_service）。"""
+        return interview_service.interview_agents_batch(
+            cls.RUN_STATE_DIR,
+            simulation_id,
+            interviews,
+            platform=platform,
+            timeout=timeout,
         )
-
-        response = ipc_client.send_batch_interview(
-            interviews=interviews, platform=platform, timeout=timeout
-        )
-
-        if response.status.value == "completed":
-            return {
-                "success": True,
-                "interviews_count": len(interviews),
-                "result": response.result,
-                "timestamp": response.timestamp,
-            }
-        else:
-            return {
-                "success": False,
-                "interviews_count": len(interviews),
-                "error": response.error,
-                "timestamp": response.timestamp,
-            }
 
     @classmethod
     def interview_all_agents(
         cls, simulation_id: str, prompt: str, platform: str | None = None, timeout: float = 180.0
     ) -> dict[str, Any]:
-        """
-        采访所有Agent（全局采访）
-
-        使用相同的问题采访模拟中的所有Agent
-
-        Args:
-            simulation_id: 模拟ID
-            prompt: 采访问题（所有Agent使用相同问题）
-            platform: 指定平台（可选）
-                - "twitter": 只采访Twitter平台
-                - "reddit": 只采访Reddit平台
-                - None: 双平台模拟时每个Agent同时采访两个平台
-            timeout: 超时时间（秒）
-
-        Returns:
-            全局采访结果字典
-        """
-        sim_dir = os.path.join(cls.RUN_STATE_DIR, simulation_id)
-        if not os.path.exists(sim_dir):
-            raise AppError(f"模拟不存在: {simulation_id}", status=404)
-
-        # 从配置文件获取所有Agent信息
-        config_path = os.path.join(sim_dir, "simulation_config.json")
-        if not os.path.exists(config_path):
-            raise AppError(f"模拟配置不存在: {simulation_id}", status=404)
-
-        with open(config_path, encoding="utf-8") as f:
-            config = json.load(f)
-
-        agent_configs = config.get("agent_configs", [])
-        if not agent_configs:
-            raise AppError(f"模拟配置中没有Agent: {simulation_id}", status=404)
-
-        # 构建批量采访列表
-        interviews = []
-        for agent_config in agent_configs:
-            agent_id = agent_config.get("agent_id")
-            if agent_id is not None:
-                interviews.append({"agent_id": agent_id, "prompt": prompt})
-
-        logger.info(
-            f"发送全局Interview命令: simulation_id={simulation_id}, agent_count={len(interviews)}, platform={platform}"
-        )
-
-        return cls.interview_agents_batch(
-            simulation_id=simulation_id, interviews=interviews, platform=platform, timeout=timeout
+        """采访所有 Agent（薄委托 interview_service）。"""
+        return interview_service.interview_all_agents(
+            cls.RUN_STATE_DIR,
+            simulation_id,
+            prompt,
+            platform=platform,
+            timeout=timeout,
         )
 
     @classmethod
@@ -1708,7 +1578,7 @@ class SimulationRunner:
         limit: int = 100,
     ) -> list[dict[str, Any]]:
         """
-        获取Interview历史记录（从数据库读取）
+        获取Interview历史记录（薄委托 interview_service）
 
         Args:
             simulation_id: 模拟ID
@@ -1722,29 +1592,10 @@ class SimulationRunner:
         Returns:
             Interview历史记录列表
         """
-        sim_dir = os.path.join(cls.RUN_STATE_DIR, simulation_id)
-
-        results = []
-
-        # 确定要查询的平台
-        if platform in ("reddit", "twitter"):
-            platforms = [platform]
-        else:
-            # 不指定platform时，查询两个平台
-            platforms = ["twitter", "reddit"]
-
-        for p in platforms:
-            db_path = os.path.join(sim_dir, f"{p}_simulation.db")
-            platform_results = InterviewTraceRepository.list_interviews(
-                db_path=db_path, platform_name=p, agent_id=agent_id, limit=limit
-            )
-            results.extend(platform_results)
-
-        # 按时间降序排序
-        results.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
-
-        # 如果查询了多个平台，限制总数
-        if len(platforms) > 1 and len(results) > limit:
-            results = results[:limit]
-
-        return results
+        return interview_service.get_interview_history(
+            cls.RUN_STATE_DIR,
+            simulation_id,
+            platform=platform,
+            agent_id=agent_id,
+            limit=limit,
+        )
