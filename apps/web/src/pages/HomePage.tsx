@@ -27,6 +27,8 @@ import { useAuth } from '@/stores/auth'
 
 const ACCEPTED = ['pdf', 'md', 'txt']
 const THINK_MS = 750
+/** 内置示例材料：点一下即可“附”上一份样例，无需自己准备就能跑通整条预测流程 */
+const SAMPLE_KEYS = ['samplePress', 'sampleChat', 'sampleResearch'] as const
 
 type Stage = 'topic' | 'material' | 'ready'
 
@@ -107,6 +109,14 @@ export default function HomePage() {
     setFiles((prev) => [...prev, ...valid])
   }
   const removeFile = (index: number) => setFiles((prev) => prev.filter((_, i) => i !== index))
+
+  // 点击示例材料：用内置文本现场构造一个 .txt File，走与真实上传一致的链路；重复点击不叠加
+  const addSampleFile = (key: (typeof SAMPLE_KEYS)[number]) => {
+    const name = `${t(`home.${key}Label`)}.txt`
+    if (files.some((f) => f.name === name)) return
+    const file = new File([t(`home.${key}Body`)], name, { type: 'text/plain' })
+    setFiles((prev) => [...prev, file])
+  }
 
   const submitTopic = (text: string) => {
     const value = text.trim()
@@ -222,7 +232,7 @@ export default function HomePage() {
         {stage === 'topic' ? (
           <div className="animate-rise-in ml-12 flex flex-col gap-3">
             <div className="flex flex-wrap gap-2">
-              {(['chatEg1', 'chatEg2', 'chatEg3'] as const).map((k) => (
+              {(['chatEg1', 'chatEg2', 'chatEg3', 'chatEg4', 'chatEg5'] as const).map((k) => (
                 <Button
                   key={k}
                   variant="secondary"
@@ -322,6 +332,28 @@ export default function HomePage() {
                     <span className="text-muted-foreground text-sm">
                       {t('home.chatUploadHint')}
                     </span>
+                  </div>
+
+                  {/* 内置示例材料：没有现成文件时点一个就能跑通 */}
+                  <div className="flex flex-col gap-2">
+                    <span className="text-muted-foreground text-xs">
+                      {t('home.chatSampleHint')}
+                    </span>
+                    <div className="flex flex-wrap gap-2">
+                      {SAMPLE_KEYS.map((k) => (
+                        <Button
+                          key={k}
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          className="text-muted-foreground hover:text-foreground h-auto rounded-full px-3.5 py-1.5 font-normal"
+                          onClick={() => addSampleFile(k)}
+                        >
+                          <FileText className="mr-1.5 h-3.5 w-3.5 text-indigo-500" />
+                          {t(`home.${k}Label`)}
+                        </Button>
+                      ))}
+                    </div>
                   </div>
 
                   {fileList()}
