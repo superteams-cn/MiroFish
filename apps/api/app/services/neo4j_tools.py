@@ -22,6 +22,7 @@ from ..utils.locale import get_locale, t
 from ..utils.neo4j_graph_utils import (
     fetch_all_edges,
     fetch_all_nodes,
+    fetch_node,
     get_neo4j_graph_client,
     run_async,
 )
@@ -602,25 +603,20 @@ class Neo4jToolsService:
 
     # ── 单节点详情 ────────────────────────────────────────────────────────────
 
-    def get_node_detail(self, node_uuid: str) -> NodeInfo | None:
+    def get_node_detail(self, node_uuid: str, graph_id: str = "") -> NodeInfo | None:
         logger.info(t("console.fetchingNodeDetail", uuid=node_uuid[:8]))
+        if not graph_id:
+            return None
         try:
-            cypher = """
-            MATCH (n:Entity) WHERE n.uuid = $uuid
-            RETURN n.uuid AS uuid, n.name AS name, n.summary AS summary,
-                   labels(n) AS labels, n.attributes_json AS attributes_json
-            """
-
-            records = self._client.read(cypher, {"uuid": node_uuid})
-            if not records:
+            r = fetch_node(graph_id, node_uuid)
+            if not r:
                 return None
-            r = records[0]
             return NodeInfo(
                 uuid=r.get("uuid") or "",
                 name=r.get("name") or "",
                 labels=list(r.get("labels") or []),
                 summary=r.get("summary") or "",
-                attributes=json.loads(r.get("attributes_json") or "{}"),
+                attributes=r.get("attributes") or {},
             )
         except Exception as e:
             logger.error(t("console.fetchNodeDetailFailed", error=str(e)))
@@ -761,7 +757,7 @@ class Neo4jToolsService:
 
         for uid in entity_uuids:
             try:
-                node = self.get_node_detail(uid)
+                node = self.get_node_detail(uid, graph_id)
                 if node:
                     node_map[uid] = node
                     entity_type = next(

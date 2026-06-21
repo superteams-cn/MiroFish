@@ -1,8 +1,8 @@
-"""Neo4j graph utilities.
+"""图谱存储工具（模块名沿用 neo4j_graph_utils 以兼容既有导入）。
 
-The module name is kept for compatibility with existing imports. The
-implementation is now a lightweight Neo4j property-graph layer used by the
-schema-constrained graph builder.
+后端已从 Neo4j 切换为 Postgres JSONB（见 repositories/graph_repo.py）：图谱访问全是
+「取整张图 + 应用层朴素打分」，无多跳遍历，且单图极小（百级节点），故 KV 式 JSONB 存储
+足矣，并彻底消除 Neo4j 在线单点依赖。公开的类/函数名保持不变，调用方无需改动。
 """
 
 from __future__ import annotations
@@ -11,19 +11,16 @@ import asyncio
 import json
 import re
 import threading
-from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Any
-
-from neo4j import GraphDatabase
 
 from ..core.logger import get_logger
 
 logger = get_logger("superfish.graph_utils")
 
 _DEFAULT_MAX_NODES = 2000
-_neo4j_client = None
-_neo4j_client_lock = threading.Lock()
+_graph_client = None
+_graph_client_lock = threading.Lock()
 
 
 def run_async(coro) -> Any:
@@ -79,7 +76,7 @@ def _search_terms(query: str) -> list[str]:
         for part in re.split(r"[\s,，。；;：:、/\\|（）()《》<>\"'“”‘’！？!?]+", query)
         if len(part) > 1
     ]
-    chinese_chunks = re.findall(r"[\u4e00-\u9fff]+", query)
+    chinese_chunks = re.findall(r"[一-鿿]+", query)
     for chunk in chinese_chunks:
         for size in (2, 3, 4):
             terms.extend(chunk[idx : idx + size] for idx in range(0, max(len(chunk) - size + 1, 0)))
@@ -100,32 +97,21 @@ def _score_text(query: str, terms: list[str], text: str) -> int:
 
 
 class Neo4jGraphClient:
-    """Small synchronous Neo4j client with the subset used by SuperFish."""
+    """图谱存储客户端（历史名保留以兼容导入）。后端为 Postgres JSONB（GraphRepository）。
 
-    def __init__(self):
-        from ..core.settings import settings
+    仅承载实际被使用的子集：写整张图（write_graph）、应用层搜索（search）。
+    历史的 read/write 裸 Cypher 接口已移除——其调用方改用 fetch_node_edges/fetch_node 等。
+    """
 
-        self.driver = GraphDatabase.driver(
-            settings.neo4j_uri,
-            auth=(settings.neo4j_user, settings.neo4j_password),
-        )
+    def __init__(self, uri: str | None = None):
+        # 后端为 Postgres，无需驱动连接；uri 仅为兼容旧签名而保留。
+        pass
 
-    def close(self):
-        self.driver.close()
+    def close(self):  # 兼容旧调用，无操作
+        pass
 
-    def read(self, cypher: str, params: dict[str, Any] | None = None) -> list[Any]:
-        """执行只读 Cypher 并返回 Record 列表。
-
-        统一封装 ``with driver.session()`` 生命周期，使调用方（服务层）不再各自伸手
-        进 ``client.driver.session()`` 重复样板。
-        """
-        with self.driver.session() as session:
-            return list(session.run(cypher, params or {}))
-
-    def write(self, cypher: str, params: dict[str, Any] | None = None) -> None:
-        """执行写 Cypher（不返回结果集）。"""
-        with self.driver.session() as session:
-            session.run(cypher, params or {})
+    def build_indices_and_constraints(self):  # 表/索引由建表负责，无操作
+        pass
 
     async def search(
         self,
@@ -134,146 +120,116 @@ class Neo4jGraphClient:
         num_results: int = 10,
         **_: Any,
     ) -> list[Any]:
-        group_ids = group_ids or []
+        """在指定图谱内按朴素文本打分检索关系（不跨租户全表扫；group_ids 为空直接返回）。"""
+        from ..repositories.graph_repo import GraphRepository
+
+        group_ids = [g for g in (group_ids or []) if g]
+        if not group_ids:
+            return []
         query_lower = (query or "").lower()
-        terms = _search_terms(query)
-        if not terms and query_lower:
-            terms = [query_lower]
+        terms = _search_terms(query) or ([query_lower] if query_lower else [])
 
-        with self.driver.session() as session:
-            records = list(
-                session.run(
-                    """
-                MATCH (s:Entity)-[r:RELATES_TO]->(t:Entity)
-                WHERE size($group_ids) = 0 OR r.group_id IN $group_ids
-                RETURN r.uuid AS uuid,
-                       r.name AS name,
-                       r.fact AS fact,
-                       r.group_id AS group_id,
-                       s.uuid AS source_node_uuid,
-                       s.name AS source_node_name,
-                       s.summary AS source_summary,
-                       t.uuid AS target_node_uuid,
-                       t.name AS target_node_name,
-                       t.summary AS target_summary
-                """,
-                    {"group_ids": group_ids},
+        scored: list[tuple[int, dict, dict, dict, str]] = []
+        for gid in group_ids:
+            nodes, edges = GraphRepository.load(gid)
+            nmap = {n.get("uuid"): n for n in nodes}
+            for r in edges:
+                s = nmap.get(r.get("source_node_uuid"), {})
+                t = nmap.get(r.get("target_node_uuid"), {})
+                searchable = " ".join(
+                    str(x or "")
+                    for x in (
+                        r.get("name"),
+                        r.get("fact"),
+                        s.get("name"),
+                        s.get("summary"),
+                        t.get("name"),
+                        t.get("summary"),
+                    )
                 )
-            )
-
-        scored = []
-        for record in records:
-            searchable = " ".join(
-                str(record.get(key) or "")
-                for key in (
-                    "name",
-                    "fact",
-                    "source_node_name",
-                    "source_summary",
-                    "target_node_name",
-                    "target_summary",
-                )
-            )
-            score = _score_text(query_lower, terms, searchable)
-            if score <= 0:
-                continue
-            scored.append((score, record))
+                score = _score_text(query_lower, terms, searchable)
+                if score > 0:
+                    scored.append((score, r, s, t, gid))
 
         scored.sort(key=lambda item: item[0], reverse=True)
         return [
             SimpleNamespace(
-                uuid=record.get("uuid") or "",
-                name=record.get("name") or "",
-                fact=record.get("fact") or "",
-                group_id=record.get("group_id") or "",
-                source_node_uuid=record.get("source_node_uuid") or "",
-                target_node_uuid=record.get("target_node_uuid") or "",
-                source_node_name=record.get("source_node_name") or "",
-                target_node_name=record.get("target_node_name") or "",
+                uuid=r.get("uuid") or "",
+                name=r.get("name") or "",
+                fact=r.get("fact") or "",
+                group_id=gid,
+                source_node_uuid=r.get("source_node_uuid") or "",
+                target_node_uuid=r.get("target_node_uuid") or "",
+                source_node_name=s.get("name") or "",
+                target_node_name=t.get("name") or "",
             )
-            for _, record in scored[:num_results]
+            for _, r, s, t, gid in scored[:num_results]
         ]
-
-    def build_indices_and_constraints(self):
-        with self.driver.session() as session:
-            session.run(
-                "CREATE CONSTRAINT entity_uuid IF NOT EXISTS FOR (n:Entity) REQUIRE n.uuid IS UNIQUE"
-            )
-            session.run("CREATE INDEX entity_group IF NOT EXISTS FOR (n:Entity) ON (n.group_id)")
-            session.run("CREATE INDEX entity_name IF NOT EXISTS FOR (n:Entity) ON (n.name)")
-            session.run(
-                "CREATE INDEX relates_group IF NOT EXISTS FOR ()-[r:RELATES_TO]-() ON (r.group_id)"
-            )
 
     def write_graph(
         self,
         graph_id: str,
         nodes: list[dict[str, Any]],
         edges: list[dict[str, Any]],
+        user_id: str = "",
     ) -> None:
-        now = datetime.now(UTC).isoformat()
-        with self.driver.session() as session:
-            for node in nodes:
-                labels = [
-                    label
-                    for label in node.get("labels", [])
-                    if label and label not in ("Entity", "Node")
-                ]
-                node_type = labels[0] if labels else node.get("type", "Entity")
-                node_label = _safe_label(node_type)
-                session.run(
-                    f"""
-                    MERGE (n:Entity:`{node_label}` {{uuid: $uuid}})
-                    SET n.name = $name,
-                        n.summary = $summary,
-                        n.group_id = $group_id,
-                        n.attributes_json = $attributes_json,
-                        n.created_at = coalesce(n.created_at, $created_at)
-                    """,
-                    {
-                        "uuid": node["uuid"],
-                        "name": node.get("name", ""),
-                        "summary": node.get("summary", ""),
-                        "group_id": graph_id,
-                        "attributes_json": _json_dumps(node.get("attributes", {})),
-                        "created_at": now,
-                    },
-                )
+        """整张图全量写入（替换语义，与建图流式累积写一致）。
 
-            for edge in edges:
-                session.run(
-                    """
-                    MATCH (s:Entity {uuid: $source_uuid}), (t:Entity {uuid: $target_uuid})
-                    MERGE (s)-[r:RELATES_TO {uuid: $uuid}]->(t)
-                    SET r.name = $name,
-                        r.fact = $fact,
-                        r.group_id = $group_id,
-                        r.attributes_json = $attributes_json,
-                        r.created_at = coalesce(r.created_at, $created_at)
-                    """,
-                    {
-                        "uuid": edge["uuid"],
-                        "source_uuid": edge["source_node_uuid"],
-                        "target_uuid": edge["target_node_uuid"],
-                        "name": edge.get("name", ""),
-                        "fact": edge.get("fact", ""),
-                        "group_id": graph_id,
-                        "attributes_json": _json_dumps(edge.get("attributes", {})),
-                        "created_at": now,
-                    },
-                )
+        规范化为读取期一致的形状，并在写入时富集边的 source/target 名（读取期无需再 join）。
+        """
+        from ..repositories.graph_repo import GraphRepository
+
+        name_map: dict[str, str] = {}
+        norm_nodes: list[dict[str, Any]] = []
+        for node in nodes:
+            labels = [
+                label
+                for label in node.get("labels", [])
+                if label and label not in ("Entity", "Node")
+            ]
+            node_type = labels[0] if labels else node.get("type", "Entity")
+            uuid = node["uuid"]
+            name = node.get("name", "")
+            name_map[uuid] = name
+            norm_nodes.append(
+                {
+                    "uuid": uuid,
+                    "name": name,
+                    "summary": node.get("summary", ""),
+                    "labels": ["Entity", _safe_label(node_type)],
+                    "attributes": node.get("attributes", {}) or {},
+                }
+            )
+
+        norm_edges: list[dict[str, Any]] = []
+        for edge in edges:
+            su = edge.get("source_node_uuid", "")
+            tu = edge.get("target_node_uuid", "")
+            norm_edges.append(
+                {
+                    "uuid": edge["uuid"],
+                    "name": edge.get("name", ""),
+                    "fact": edge.get("fact", ""),
+                    "source_node_uuid": su,
+                    "target_node_uuid": tu,
+                    "source_node_name": name_map.get(su, ""),
+                    "target_node_name": name_map.get(tu, ""),
+                    "attributes": edge.get("attributes", {}) or {},
+                }
+            )
+
+        GraphRepository.save(graph_id, norm_nodes, norm_edges, user_id=user_id)
 
 
-def get_neo4j_graph_client() -> Neo4jGraphClient:
-    """Return the shared Neo4j graph client."""
-    global _neo4j_client
-    if _neo4j_client is None:
-        with _neo4j_client_lock:
-            if _neo4j_client is None:
-                _neo4j_client = Neo4jGraphClient()
-                _neo4j_client.build_indices_and_constraints()
-                logger.info("Neo4j graph client initialized")
-    return _neo4j_client
+def get_neo4j_graph_client(routing_key: str | None = None) -> Neo4jGraphClient:
+    """返回图谱存储客户端（进程内单例）。routing_key 仅为兼容签名而保留，无实际作用。"""
+    global _graph_client
+    if _graph_client is None:
+        with _graph_client_lock:
+            if _graph_client is None:
+                _graph_client = Neo4jGraphClient()
+                logger.info("图谱存储客户端已初始化（Postgres 后端）")
+    return _graph_client
 
 
 get_neo4j_client = get_neo4j_graph_client
@@ -284,86 +240,47 @@ def fetch_all_nodes(
     group_id: str,
     max_items: int = _DEFAULT_MAX_NODES,
 ) -> list[dict[str, Any]]:
-    client = client or get_neo4j_graph_client()
-    with client.driver.session() as session:
-        result = session.run(
-            """
-            MATCH (n:Entity)
-            WHERE n.group_id = $group_id
-            RETURN n.uuid AS uuid,
-                   n.name AS name,
-                   n.summary AS summary,
-                   labels(n) AS labels,
-                   n.attributes_json AS attributes_json
-            LIMIT $limit
-            """,
-            {"group_id": group_id, "limit": max_items},
-        )
-        nodes = [
-            {
-                "uuid": record.get("uuid") or "",
-                "name": record.get("name") or "",
-                "summary": record.get("summary") or "",
-                "labels": list(record.get("labels") or []),
-                "attributes": _json_loads(record.get("attributes_json")),
-            }
-            for record in result
-        ]
-    if len(nodes) >= max_items:
-        logger.warning(f"节点数达到上限 {max_items}，graph={group_id}，可能存在截断")
-    return nodes
+    """取整张图的节点（已是读取期形状）。"""
+    from ..repositories.graph_repo import GraphRepository
+
+    nodes, _ = GraphRepository.load(group_id)
+    return nodes[:max_items]
 
 
 def fetch_all_edges(
     client: Neo4jGraphClient | None,
     group_id: str,
 ) -> list[dict[str, Any]]:
-    client = client or get_neo4j_graph_client()
-    with client.driver.session() as session:
-        result = session.run(
-            """
-            MATCH (s:Entity)-[r:RELATES_TO]->(t:Entity)
-            WHERE r.group_id = $group_id
-            RETURN r.uuid AS uuid,
-                   r.name AS name,
-                   r.fact AS fact,
-                   s.uuid AS source_node_uuid,
-                   t.uuid AS target_node_uuid,
-                   r.created_at AS created_at,
-                   r.valid_at AS valid_at,
-                   r.invalid_at AS invalid_at,
-                   r.expired_at AS expired_at,
-                   r.attributes_json AS attributes_json,
-                   s.name AS source_node_name,
-                   t.name AS target_node_name
-            """,
-            {"group_id": group_id},
-        )
-        return [
-            {
-                "uuid": record.get("uuid") or "",
-                "name": record.get("name") or "",
-                "fact": record.get("fact") or "",
-                "source_node_uuid": record.get("source_node_uuid") or "",
-                "target_node_uuid": record.get("target_node_uuid") or "",
-                "source_node_name": record.get("source_node_name") or "",
-                "target_node_name": record.get("target_node_name") or "",
-                "created_at": record.get("created_at"),
-                "valid_at": record.get("valid_at"),
-                "invalid_at": record.get("invalid_at"),
-                "expired_at": record.get("expired_at"),
-                "attributes": _json_loads(record.get("attributes_json")),
-            }
-            for record in result
-        ]
+    """取整张图的边（已富集 source/target 名）。"""
+    from ..repositories.graph_repo import GraphRepository
+
+    _, edges = GraphRepository.load(group_id)
+    return edges
+
+
+def fetch_node_edges(group_id: str, node_uuid: str) -> list[dict[str, Any]]:
+    """取某节点相关的边（源或目标为该节点）。"""
+    from ..repositories.graph_repo import GraphRepository
+
+    _, edges = GraphRepository.load(group_id)
+    return [
+        e
+        for e in edges
+        if e.get("source_node_uuid") == node_uuid or e.get("target_node_uuid") == node_uuid
+    ]
+
+
+def fetch_node(group_id: str, node_uuid: str) -> dict[str, Any] | None:
+    """取某节点（按 uuid）。"""
+    from ..repositories.graph_repo import GraphRepository
+
+    nodes, _ = GraphRepository.load(group_id)
+    return next((n for n in nodes if n.get("uuid") == node_uuid), None)
 
 
 def delete_group(client: Neo4jGraphClient | None, group_id: str) -> None:
-    client = client or get_neo4j_graph_client()
-    with client.driver.session() as session:
-        session.run(
-            "MATCH (s:Entity)-[r:RELATES_TO]->(t:Entity) WHERE r.group_id = $gid DELETE r",
-            {"gid": group_id},
-        )
-        session.run("MATCH (n:Entity) WHERE n.group_id = $gid DETACH DELETE n", {"gid": group_id})
+    """删除整张图。"""
+    from ..repositories.graph_repo import GraphRepository
+
+    GraphRepository.delete(group_id)
     logger.info(f"已删除图谱数据: group_id={group_id}")

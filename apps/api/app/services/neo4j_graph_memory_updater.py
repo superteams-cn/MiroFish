@@ -3,11 +3,10 @@ Neo4j 图谱记忆更新服务
 将模拟中的 Agent 活动动态更新到当前项目图谱中。
 """
 
-import json
 import threading
 import time
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 from queue import Empty, Queue
 from typing import Any
 
@@ -273,64 +272,14 @@ class Neo4jGraphMemoryUpdater:
     def _send_batch_activities(self, activities: list[AgentActivity], platform: str):
         if not activities:
             return
-
-        combined_text = "\n".join(a.to_episode_text() for a in activities)
-        platform_label = self._get_platform_label(platform)
-
-        for attempt in range(self.MAX_RETRIES):
-            try:
-                activity_uuid = (
-                    f"activity_{platform}_{datetime.now(UTC).strftime('%Y%m%d%H%M%S%f')}"
-                )
-                self._client.write(
-                    """
-                        MERGE (a:Entity:SimulationActivity {uuid: $uuid})
-                        SET a.name = $name,
-                            a.summary = $summary,
-                            a.group_id = $group_id,
-                            a.attributes_json = $attributes_json,
-                            a.created_at = $created_at
-                        WITH a
-                        UNWIND $agent_names AS agent_name
-                        MATCH (agent:Entity {group_id: $group_id})
-                        WHERE agent.name = agent_name
-                        MERGE (agent)-[r:RELATES_TO {uuid: $uuid + '_' + agent.uuid}]->(a)
-                        SET r.name = 'POSTED_ACTIVITY',
-                            r.fact = $summary,
-                            r.group_id = $group_id,
-                            r.attributes_json = '{}',
-                            r.created_at = $created_at
-                        """,
-                    {
-                        "uuid": activity_uuid,
-                        "name": f"{platform_label}模拟活动",
-                        "summary": combined_text,
-                        "group_id": self.graph_id,
-                        "attributes_json": json.dumps(
-                            {
-                                "platform": platform,
-                                "activity_count": len(activities),
-                            },
-                            ensure_ascii=False,
-                        ),
-                        "created_at": datetime.now(UTC).isoformat(),
-                        "agent_names": list({a.agent_name for a in activities if a.agent_name}),
-                    },
-                )
-                self._total_sent += 1
-                self._total_items_sent += len(activities)
-                logger.info(
-                    f"成功写入 {len(activities)} 条{platform_label}活动到图谱 {self.graph_id}"
-                )
-                return
-
-            except Exception as e:
-                if attempt < self.MAX_RETRIES - 1:
-                    logger.warning(f"写入失败 (尝试 {attempt + 1}/{self.MAX_RETRIES}): {e}")
-                    time.sleep(self.RETRY_DELAY * (attempt + 1))
-                else:
-                    logger.error(f"写入失败，已重试 {self.MAX_RETRIES} 次: {e}")
-                    self._failed_count += 1
+        # 模拟期图谱记忆增量写：Neo4j 移除后暂未在 Postgres 后端实现（上线先关，默认即关闭）。
+        # enable_graph_memory_update 默认 False，故正常路径不会进到这里；若被显式开启则安全跳过，
+        # 不影响模拟本身。后续如需该功能，可改为往图谱增量表追加 activity，避免反复重写大 JSONB。
+        self._failed_count += len(activities)
+        logger.warning(
+            f"图谱记忆增量写已禁用（Postgres 后端暂未实现），跳过 {len(activities)} 条"
+            f"{self._get_platform_label(platform)}活动 graph={self.graph_id}"
+        )
 
     def _flush_remaining(self):
         while not self._activity_queue.empty():
