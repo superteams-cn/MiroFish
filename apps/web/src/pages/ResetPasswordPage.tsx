@@ -5,6 +5,7 @@ import { Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
+import { TextButton } from '@/components/ui/text-button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -70,13 +71,9 @@ export default function ResetPasswordPage() {
           </Button>
         </form>
 
-        <button
-          type="button"
-          onClick={() => navigate('/')}
-          className="text-muted-foreground hover:text-foreground mx-auto mt-4 block text-sm transition-colors"
-        >
+        <TextButton onClick={() => navigate('/')} className="mx-auto mt-4 block text-sm">
           {t('auth.backToSignIn')}
-        </button>
+        </TextButton>
       </Card>
     </div>
   )

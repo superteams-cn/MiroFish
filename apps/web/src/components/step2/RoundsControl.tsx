@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next'
 import { Clock } from 'lucide-react'
 
 import { Card } from '@/components/ui/card'
+import { TextButton } from '@/components/ui/text-button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
 import { Slider } from '@/components/ui/slider'
@@ -58,13 +59,9 @@ export function RoundsControl({
           setCustomMaxRounds={setCustomMaxRounds}
         />
       ) : (
-        <button
-          type="button"
-          onClick={() => setUseCustomRounds(true)}
-          className="text-muted-foreground hover:text-foreground mt-2 text-left text-[11px] transition-colors"
-        >
+        <TextButton onClick={() => setUseCustomRounds(true)} className="mt-2 text-left text-[11px]">
           {t('step2.customTip')} ➝
-        </button>
+        </TextButton>
       )}
     </Card>
   )

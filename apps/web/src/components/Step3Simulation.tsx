@@ -19,6 +19,7 @@ import { LiveActionItem } from '@/components/step3/LiveActionItem'
 import { useSimulationRun } from '@/components/step3/useSimulationRun'
 import { StageIcon } from '@/components/common/StageIcon'
 import { SoftProgress } from '@/components/common/SoftProgress'
+import { TextButton } from '@/components/ui/text-button'
 import { stopSimulation } from '@/lib/api/simulation'
 import { generateReport } from '@/lib/api/report'
 import type { SystemLog } from '@/lib/process-types'
@@ -166,14 +167,13 @@ export function Step3Simulation({
                   {!isGeneratingReport && <ArrowRight className="h-5 w-5" />}
                 </Button>
               ) : (
-                <button
-                  type="button"
+                <TextButton
                   onClick={() => setStopConfirmOpen(true)}
                   disabled={isStopping}
-                  className="text-muted-foreground hover:text-foreground text-xs transition-colors"
+                  className="text-xs"
                 >
                   {t('step3.cStopEarly')}
-                </button>
+                </TextButton>
               )}
             </div>
 

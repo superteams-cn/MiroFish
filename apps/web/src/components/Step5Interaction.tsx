@@ -5,6 +5,7 @@ import { ChatPanel } from '@/components/step5/ChatPanel'
 import { SurveyPanel } from '@/components/step5/SurveyPanel'
 import { useInteraction } from '@/components/step5/useInteraction'
 import { ReportOutlinePanel } from '@/components/step4/ReportOutlinePanel'
+import { TextButton } from '@/components/ui/text-button'
 import { Logo } from '@/components/common/Logo'
 import { cn } from '@/lib/utils'
 import type { Profile } from '@/lib/step2-types'
@@ -115,14 +116,13 @@ export function Step5Interaction({ reportId, simulationId, addLog }: Step5Props)
               <PeoplePicker profiles={profiles} onPick={pickAgent} />
             ) : tab === 'one' ? (
               <div className="flex h-full flex-col">
-                <button
-                  type="button"
+                <TextButton
                   onClick={backToPicker}
-                  className="text-muted-foreground hover:text-foreground flex items-center gap-1.5 border-b px-4 py-2 text-xs transition-colors"
+                  className="flex items-center gap-1.5 border-b px-4 py-2 text-xs"
                 >
                   <ArrowLeft className="h-3.5 w-3.5" />
                   {t('step5.cChangePerson')}
-                </button>
+                </TextButton>
                 <div className="min-h-0 flex-1">
                   <ChatPanel
                     target="agent"

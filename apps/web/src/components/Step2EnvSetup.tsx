@@ -14,6 +14,7 @@ import { useStep2Orchestration } from '@/components/step2/useStep2Orchestration'
 import { StageIcon } from '@/components/common/StageIcon'
 import { SoftProgress } from '@/components/common/SoftProgress'
 import { Button } from '@/components/ui/button'
+import { TextButton } from '@/components/ui/text-button'
 import { Card } from '@/components/ui/card'
 import { CollapsibleHeader } from '@/components/ui/collapsible-header'
 import { SoftBadge } from '@/components/ui/soft-badge'
@@ -312,14 +313,10 @@ export function Step2EnvSetup({
                 {t('step2.cNext')}
                 <ArrowRight className="h-5 w-5" />
               </Button>
-              <button
-                type="button"
-                onClick={onGoBack}
-                className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-xs transition-colors"
-              >
+              <TextButton onClick={onGoBack} className="inline-flex items-center gap-1 text-xs">
                 <ArrowLeft className="h-3.5 w-3.5" />
                 {t('step2.cBack')}
-              </button>
+              </TextButton>
             </div>
           )}
 

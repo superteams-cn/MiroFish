@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { TextButton } from '@/components/ui/text-button'
 import { Label } from '@/components/ui/label'
 import { OtpInput } from '@/components/auth/OtpInput'
 import { useAuth } from '@/stores/auth'
@@ -110,14 +111,13 @@ export function VerifyDialog({ open, onClose }: VerifyDialogProps) {
           </Button>
         </form>
 
-        <button
-          type="button"
+        <TextButton
           onClick={onResend}
           disabled={resending || cooldown > 0}
-          className="text-muted-foreground hover:text-foreground mx-auto text-sm transition-colors disabled:opacity-50"
+          className="mx-auto text-sm"
         >
           {cooldown > 0 ? t('auth.resendIn', { sec: cooldown }) : t('auth.resend')}
-        </button>
+        </TextButton>
       </DialogContent>
     </Dialog>
   )

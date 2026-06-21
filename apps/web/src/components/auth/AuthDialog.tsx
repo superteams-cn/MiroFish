@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { TextButton } from '@/components/ui/text-button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { OtpInput } from '@/components/auth/OtpInput'
@@ -177,13 +178,9 @@ export function AuthDialog() {
               <div className="flex items-center justify-between">
                 <Label htmlFor="auth-password">{passwordLabel}</Label>
                 {isLogin && loginMethod === 'password' && (
-                  <button
-                    type="button"
-                    onClick={() => setDialogMode('forgot')}
-                    className="text-muted-foreground hover:text-foreground text-xs transition-colors"
-                  >
+                  <TextButton onClick={() => setDialogMode('forgot')} className="text-xs">
                     {t('auth.forgotPassword')}
-                  </button>
+                  </TextButton>
                 )}
               </div>
               <Input
@@ -240,17 +237,16 @@ export function AuthDialog() {
           </Button>
         </form>
 
-        <button
-          type="button"
+        <TextButton
           onClick={() => setDialogMode(isRegister || isForgot ? 'login' : 'register')}
-          className="text-muted-foreground hover:text-foreground mx-auto text-sm transition-colors"
+          className="mx-auto text-sm"
         >
           {isForgot
             ? t('auth.backToSignIn')
             : isRegister
               ? t('auth.switchToSignIn')
               : t('auth.switchToSignUp')}
-        </button>
+        </TextButton>
       </DialogContent>
     </Dialog>
   )
