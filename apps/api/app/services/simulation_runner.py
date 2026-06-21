@@ -16,9 +16,7 @@ from datetime import datetime
 from queue import Queue
 from typing import Any
 
-from ..core.db import session_scope  # 仅监控所有权 CAS（with_for_update 行锁）仍直用
 from ..core.logger import get_logger
-from ..db_models import SimulationRunStateRow  # 同上：所有权 CAS 直接锁行
 from ..domain.run_state import AgentAction, RoundSummary, RunnerStatus, SimulationRunState
 from ..repositories.run_state_repo import RunStateRepository
 from ..utils.locale import get_locale, set_locale
@@ -110,54 +108,29 @@ class SimulationRunner:
     def _has_simulation_end(sim_dir: str) -> bool:
         return pc.has_simulation_end(sim_dir)
 
+    # 监控所有权 CAS：DB 原子读改写下沉到 RunStateRepository；本层只提供实例 id/TTL 与降级语义
     @classmethod
     def _try_claim_ownership(cls, simulation_id: str) -> bool:
-        """原子抢占监控所有权（Postgres 行锁 CAS）。返回 True 表示本进程成为 owner。
-
-        允许抢占：无 owner / owner 是自己 / owner 心跳过期（OWNER_TTL）。
-        """
-        now = time.time()
-        inst = cls._inst_id()
+        """抢占监控所有权；DB 异常时降级为 False。"""
         try:
-            with session_scope() as session:
-                row = session.get(SimulationRunStateRow, simulation_id, with_for_update=True)
-                if row is None:
-                    return False
-                data = dict(row.data)
-                owner = data.get("owner_id")
-                hb = data.get("owner_heartbeat") or 0
-                if owner and owner != inst and (now - hb) < cls.OWNER_TTL:
-                    return False
-                data["owner_id"] = inst
-                data["owner_heartbeat"] = now
-                row.data = data
-                return True
+            return RunStateRepository.try_claim_owner(simulation_id, cls._inst_id(), cls.OWNER_TTL)
         except Exception as e:
             logger.warning(f"抢占监控所有权失败: {simulation_id}, error={e}")
             return False
 
     @classmethod
     def _still_owner(cls, simulation_id: str) -> bool:
-        """读 PG 确认本进程仍是 owner。"""
+        """确认本进程仍是 owner；读失败时保守返回 True，避免误退出监控。"""
         try:
-            with session_scope() as session:
-                row = session.get(SimulationRunStateRow, simulation_id)
-                return bool(row) and (row.data or {}).get("owner_id") == cls._inst_id()
+            return RunStateRepository.is_owner(simulation_id, cls._inst_id())
         except Exception:
-            return True  # 读失败时保守认为仍是 owner，避免误退出
+            return True
 
     @classmethod
     def _release_ownership(cls, simulation_id: str) -> None:
         """释放所有权（仅当 owner 是自己时清空）。"""
-        inst = cls._inst_id()
         try:
-            with session_scope() as session:
-                row = session.get(SimulationRunStateRow, simulation_id, with_for_update=True)
-                if row and (row.data or {}).get("owner_id") == inst:
-                    data = dict(row.data)
-                    data["owner_id"] = None
-                    data["owner_heartbeat"] = None
-                    row.data = data
+            RunStateRepository.release_owner(simulation_id, cls._inst_id())
         except Exception as e:
             logger.warning(f"释放监控所有权失败: {simulation_id}, error={e}")
 
