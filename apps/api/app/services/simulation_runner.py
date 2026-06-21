@@ -23,6 +23,7 @@ from ..domain.run_state import AgentAction, RoundSummary, RunnerStatus, Simulati
 from ..repositories.run_state_repo import RunStateRepository
 from ..utils.locale import get_locale, set_locale
 from .neo4j_graph_memory_updater import Neo4jGraphMemoryManager
+from .simulation import process_control as pc
 from .simulation_ipc import SimulationIPCClient
 
 logger = get_logger("superfish.simulation_runner")
@@ -91,91 +92,22 @@ class SimulationRunner:
             cls._instance_id = f"{host}:{os.getpid()}"
         return cls._instance_id
 
+    # 进程探活/终止等无状态工具委托 process_control（保留旧方法名，调用方与集成测试不变）
     @staticmethod
     def _parse_etime(s: str) -> int | None:
-        """解析 `ps -o etime` 的已运行时长 [[dd-]hh:]mm:ss → 秒。"""
-        s = s.strip()
-        if not s:
-            return None
-        days = 0
-        if "-" in s:
-            d, s = s.split("-", 1)
-            days = int(d)
-        parts = [int(x) for x in s.split(":")]
-        if len(parts) == 3:
-            h, m, sec = parts
-        elif len(parts) == 2:
-            h, m, sec = 0, parts[0], parts[1]
-        else:
-            return None
-        return days * 86400 + h * 3600 + m * 60 + sec
+        return pc.parse_etime(s)
 
-    @classmethod
-    def _read_process_start_time(cls, pid: int) -> float | None:
-        """返回进程的近似绝对启动时刻（epoch 秒），失败返回 None。
+    @staticmethod
+    def _read_process_start_time(pid: int) -> float | None:
+        return pc.read_process_start_time(pid)
 
-        用已运行时长反推：start ≈ now - elapsed。同一进程在不同时刻读到的值相差仅
-        秒级，可用于 PID 复用校验（容差 2s）。兼容 Linux（etimes，整数秒）与
-        macOS（etime，格式化时长）。Windows 无 ps → 返回 None，降级为仅 os.kill 探活。
-        """
-        if not pid:
-            return None
-        # Linux: etimes（整数秒）
-        try:
-            out = subprocess.run(
-                ["ps", "-o", "etimes=", "-p", str(pid)], capture_output=True, text=True, timeout=3
-            )
-            s = out.stdout.strip()
-            if s and s.isdigit():
-                return time.time() - int(s)
-        except Exception:
-            pass
-        # macOS/BSD: etime（[[dd-]hh:]mm:ss）
-        try:
-            out = subprocess.run(
-                ["ps", "-o", "etime=", "-p", str(pid)], capture_output=True, text=True, timeout=3
-            )
-            secs = cls._parse_etime(out.stdout)
-            if secs is not None:
-                return time.time() - secs
-        except Exception:
-            pass
-        return None
+    @staticmethod
+    def _pid_alive(pid: int | None, expected_start: float | None = None) -> bool:
+        return pc.pid_alive(pid, expected_start)
 
-    @classmethod
-    def _pid_alive(cls, pid: int | None, expected_start: float | None = None) -> bool:
-        """PID 探活 + 防 PID 复用。expected_start 为记录的启动时刻，偏差>2s 视为复用（判死）。"""
-        if not pid:
-            return False
-        try:
-            os.kill(pid, 0)
-        except ProcessLookupError:
-            return False
-        except PermissionError:
-            return True  # 进程存在（只是非本用户）
-        except OSError:
-            return False
-        if expected_start is not None:
-            actual = cls._read_process_start_time(pid)
-            if actual is not None and abs(actual - expected_start) > 2.0:
-                return False  # 同 PID 但启动时刻不符 → PID 已被复用
-        return True
-
-    @classmethod
-    def _has_simulation_end(cls, sim_dir: str) -> bool:
-        """检查任一平台 actions.jsonl 是否含 simulation_end 事件（判定是否自然跑完）。"""
-        for platform in ("twitter", "reddit"):
-            log_path = os.path.join(sim_dir, platform, "actions.jsonl")
-            if not os.path.exists(log_path):
-                continue
-            try:
-                with open(log_path, encoding="utf-8") as f:
-                    for line in f:
-                        if '"simulation_end"' in line:
-                            return True
-            except Exception:
-                continue
-        return False
+    @staticmethod
+    def _has_simulation_end(sim_dir: str) -> bool:
+        return pc.has_simulation_end(sim_dir)
 
     @classmethod
     def _try_claim_ownership(cls, simulation_id: str) -> bool:
@@ -886,32 +818,10 @@ class SimulationRunner:
             logger.info(f"模拟对账完成: 接管={adopted}, 终结={finalized}")
         return {"adopted": adopted, "finalized": finalized}
 
-    @classmethod
-    def _kill_pid_group(cls, pid: int, timeout: int = 45) -> None:
-        """无 Popen 句柄时按 PID 杀进程组（start_new_session 保证 PID==PGID）。
-
-        SIGTERM 后留出收尾时间，让模拟优雅落盘 agent 记忆快照再退出；进程收尾即退出，
-        循环随即返回，放宽上限对正常停止无额外延迟。
-        """
-        if IS_WINDOWS:
-            subprocess.run(
-                ["taskkill", "/F", "/T", "/PID", str(pid)], capture_output=True, timeout=10
-            )
-            return
-        try:
-            pgid = os.getpgid(pid)
-        except ProcessLookupError:
-            return
-        os.killpg(pgid, signal.SIGTERM)
-        deadline = time.time() + timeout
-        while time.time() < deadline:
-            if not cls._pid_alive(pid):
-                return
-            time.sleep(0.3)
-        try:
-            os.killpg(pgid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
+    @staticmethod
+    def _kill_pid_group(pid: int, timeout: int = 45) -> None:
+        """按 PID 杀进程组（委托 process_control）。"""
+        pc.kill_pid_group(pid, timeout)
 
     @classmethod
     def _terminate_process(cls, process: subprocess.Popen, simulation_id: str, timeout: int = 45):
