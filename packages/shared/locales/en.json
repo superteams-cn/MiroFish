@@ -71,7 +71,19 @@
     "verifyPageTitle": "Email verification",
     "verifyPageVerifying": "Verifying your email…",
     "verifyPageSuccess": "Email verified — you can now run predictions",
-    "verifyPageFailed": "Verification failed, the link may have expired"
+    "verifyPageFailed": "Verification failed, the link may have expired",
+    "codeEmailSubject": "Your SuperFish code",
+    "codeEmailBody": "Your verification code is: {code}\n\nValid for 10 minutes. If this wasn't you, please ignore this email.",
+    "invalidPurpose": "Invalid code purpose",
+    "codeSent": "Code sent, please check your inbox",
+    "sendCode": "Send code",
+    "sendCodeIn": "Resend ({sec}s)",
+    "codeRequired": "Please enter the code",
+    "passwordLogin": "Password",
+    "codeLogin": "Email code",
+    "submitCodeLogin": "Sign in",
+    "resetByCode": "Reset with code",
+    "resetByLink": "Reset via email link"
   },
   "common": {
     "confirm": "Confirm",

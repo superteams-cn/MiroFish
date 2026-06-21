@@ -17,10 +17,13 @@ from ..db_models import UserRow
 from ..deps import get_current_user, use_locale
 from ..schemas.auth import (
     ForgotPasswordRequest,
+    LoginCodeRequest,
     LoginRequest,
     RefreshRequest,
     RegisterRequest,
+    ResetPasswordCodeRequest,
     ResetPasswordRequest,
+    SendCodeRequest,
     VerifyCodeRequest,
     VerifyEmailRequest,
 )
@@ -39,7 +42,12 @@ from ..utils.security import (
     password_fingerprint,
     verify_password,
 )
-from ..utils.verify_code import generate_code, store_code, verify_code
+from ..utils.verify_code import (
+    TTL_EMAIL_VERIFY,
+    generate_code,
+    store_code,
+    verify_code,
+)
 
 logger = get_logger("superfish.auth")
 
@@ -78,7 +86,7 @@ def _send_verification_email(user_id: str, email: str) -> None:
     link = f"{settings.web_base_url}/verify-email?token={token}"
     code = generate_code()
     # 验证码存 Redis(带 TTL)；Redis 不可用时仅链接可用，不阻塞发信
-    store_code(user_id, code)
+    store_code(f"verify:{user_id}", code, ttl=TTL_EMAIL_VERIFY)
     send_email_async(
         email,
         t("auth.verifyEmailSubject"),
@@ -87,11 +95,56 @@ def _send_verification_email(user_id: str, email: str) -> None:
     logger.info(f"已发送邮箱验证邮件: {email}")
 
 
+_VALID_PURPOSES = {"login", "register", "reset"}
+
+
+def _send_action_code(email: str, purpose: str) -> None:
+    """发送某用途的纯验证码邮件（登录/注册/重置）。"""
+    code = generate_code()
+    store_code(f"{purpose}:{email}", code)
+    send_email_async(email, t("auth.codeEmailSubject"), t("auth.codeEmailBody", code=code))
+    logger.info(f"已发送验证码: purpose={purpose} email={email}")
+
+
+@router.post("/send-code")
+def send_code(req: SendCodeRequest, request: Request):
+    """统一发送验证码（用途 login/register/reset）。
+
+    反枚举：始终返回成功，仅在合适条件下真正发码——
+    login/reset 仅对已存在的活跃账户发，register 仅对未注册邮箱发。
+    """
+    email = (req.email or "").strip().lower()
+    purpose = (req.purpose or "").strip()
+    if not _EMAIL_RE.match(email):
+        return _error(t("auth.invalidEmail"), 400)
+    if purpose not in _VALID_PURPOSES:
+        return _error(t("auth.invalidPurpose"), 400)
+
+    # 限流：IP + 邮箱(按用途) 双维度，防轰炸/枚举
+    if not check_rate_limit(
+        f"auth:sendcode:ip:{client_ip(request)}", 10, 600
+    ) or not check_rate_limit(f"auth:sendcode:{purpose}:email:{email}", 5, 600):
+        return _error(t("auth.rateLimited"), 429)
+
+    with session_scope() as session:
+        user = session.query(UserRow).filter(UserRow.email == email).first()
+        exists = user is not None and user.status == "active"
+
+    should_send = (purpose in ("login", "reset") and exists) or (
+        purpose == "register" and not exists
+    )
+    if should_send:
+        _send_action_code(email, purpose)
+
+    return {"success": True, "data": {"message": t("auth.codeSent")}}
+
+
 @router.post("/register")
 def register(req: RegisterRequest, request: Request):
-    """注册新账户（开放注册）。成功后直接签发令牌并登录，并发送邮箱验证邮件。"""
+    """注册新账户（注册即验证：需带邮箱验证码）。建号即 email_verified=True。"""
     email = (req.email or "").strip().lower()
     password = req.password or ""
+    code = (req.code or "").strip()
 
     if not _EMAIL_RE.match(email):
         return _error(t("auth.invalidEmail"), 400)
@@ -104,13 +157,22 @@ def register(req: RegisterRequest, request: Request):
     ):
         return _error(t("auth.rateLimited"), 429)
 
+    # 邮箱唯一性先行（已注册给明确提示，不消费验证码）
+    with session_scope() as session:
+        if session.query(UserRow).filter(UserRow.email == email).first() is not None:
+            return _error(t("auth.emailTaken"), 409)
+
+    # 校验注册验证码（消费一次性）
+    if not verify_code(f"register:{email}", code):
+        return _error(t("auth.invalidVerifyCode"), 400)
+
     now = datetime.now().isoformat()
     user_id = "user_" + uuid.uuid4().hex[:16]
     display_name = (req.display_name or "").strip() or email.split("@")[0]
 
     with session_scope() as session:
-        exists = session.query(UserRow).filter(UserRow.email == email).first()
-        if exists is not None:
+        # 二次确认唯一（防 TOCTOU；唯一索引兜底）
+        if session.query(UserRow).filter(UserRow.email == email).first() is not None:
             return _error(t("auth.emailTaken"), 409)
         user = UserRow(
             user_id=user_id,
@@ -118,7 +180,7 @@ def register(req: RegisterRequest, request: Request):
             password_hash=hash_password(password),
             display_name=display_name,
             status="active",
-            email_verified=False,
+            email_verified=True,  # 验证码已证明邮箱归属
             created_at=now,
             updated_at=now,
         )
@@ -126,12 +188,7 @@ def register(req: RegisterRequest, request: Request):
         session.flush()
         data = {"user": _public_user(user), **_issue_tokens(user.user_id)}
 
-    logger.info(f"新用户注册: {email}")
-    # 发送验证邮件（失败只记录，不影响注册成功）
-    try:
-        _send_verification_email(user_id, email)
-    except Exception as e:
-        logger.warning(f"验证邮件发送失败: {email} err={e}")
+    logger.info(f"新用户注册(已验证): {email}")
     return {"success": True, "data": data}
 
 
@@ -160,6 +217,34 @@ def login(req: LoginRequest, request: Request):
             return _error(t("auth.invalidCredentials"), 401)
         if user.status != "active":
             return _error(t("auth.accountDisabled"), 403)
+        data = {"user": _public_user(user), **_issue_tokens(user.user_id)}
+
+    return {"success": True, "data": data}
+
+
+@router.post("/login-code")
+def login_code(req: LoginCodeRequest, request: Request):
+    """验证码登录（无密码）。验证码仅对已存在账户发放，校验通过即签发令牌。"""
+    email = (req.email or "").strip().lower()
+    code = (req.code or "").strip()
+    if not _EMAIL_RE.match(email):
+        return _error(t("auth.invalidEmail"), 400)
+
+    # 限流：邮箱维度防爆破
+    if not check_rate_limit(f"auth:logincode:email:{email}", 5, 600):
+        return _error(t("auth.rateLimited"), 429)
+
+    if not verify_code(f"login:{email}", code):
+        return _error(t("auth.invalidVerifyCode"), 400)
+
+    with session_scope() as session:
+        user = session.query(UserRow).filter(UserRow.email == email).first()
+        if user is None or user.status != "active":
+            return _error(t("auth.invalidCredentials"), 401)
+        # 验证码登录已证明邮箱归属，顺带置为已验证
+        if not user.email_verified:
+            user.email_verified = True
+            user.updated_at = datetime.now().isoformat()
         data = {"user": _public_user(user), **_issue_tokens(user.user_id)}
 
     return {"success": True, "data": data}
@@ -250,6 +335,31 @@ def reset_password(req: ResetPasswordRequest):
     return {"success": True, "data": {"message": t("auth.resetSuccess")}}
 
 
+@router.post("/reset-password-code")
+def reset_password_code(req: ResetPasswordCodeRequest):
+    """凭验证码重置密码（与链接重置并存）。验证码仅对已存在账户发放。"""
+    email = (req.email or "").strip().lower()
+    code = (req.code or "").strip()
+    new_password = req.new_password or ""
+    if not _EMAIL_RE.match(email):
+        return _error(t("auth.invalidEmail"), 400)
+    if len(new_password) < _MIN_PASSWORD_LEN:
+        return _error(t("auth.passwordTooShort"), 400)
+
+    if not verify_code(f"reset:{email}", code):
+        return _error(t("auth.invalidVerifyCode"), 400)
+
+    with session_scope() as session:
+        user = session.query(UserRow).filter(UserRow.email == email).first()
+        if user is None or user.status != "active":
+            return _error(t("auth.invalidVerifyCode"), 400)
+        user.password_hash = hash_password(new_password)
+        user.updated_at = datetime.now().isoformat()
+
+    logger.info(f"密码已重置(验证码): {email}")
+    return {"success": True, "data": {"message": t("auth.resetSuccess")}}
+
+
 @router.post("/verify-email")
 def verify_email(req: VerifyEmailRequest):
     """凭验证令牌确认邮箱。令牌过期/格式错返回 400；已验证则幂等返回成功。"""
@@ -287,7 +397,7 @@ def verify_email_code(req: VerifyCodeRequest, current=Depends(get_current_user))
         return _error(t("auth.rateLimited"), 429)
 
     code = (req.code or "").strip()
-    if not verify_code(current["user_id"], code):
+    if not verify_code(f"verify:{current['user_id']}", code):
         return _error(t("auth.invalidVerifyCode"), 400)
 
     with session_scope() as session:

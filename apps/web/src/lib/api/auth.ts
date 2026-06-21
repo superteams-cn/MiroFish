@@ -22,12 +22,35 @@ export interface TokenPair {
   token_type: string
 }
 
-export function registerUser(payload: { email: string; password: string; display_name?: string }) {
+export type CodePurpose = 'login' | 'register' | 'reset'
+
+export function registerUser(payload: {
+  email: string
+  password: string
+  code: string
+  display_name?: string
+}) {
   return http.post<AuthSession>('/api/auth/register', payload)
 }
 
 export function loginUser(payload: { email: string; password: string }) {
   return http.post<AuthSession>('/api/auth/login', payload)
+}
+
+export function loginWithCode(payload: { email: string; code: string }) {
+  return http.post<AuthSession>('/api/auth/login-code', payload)
+}
+
+export function sendCode(email: string, purpose: CodePurpose) {
+  return http.post<{ message: string }>('/api/auth/send-code', { email, purpose })
+}
+
+export function resetPasswordWithCode(email: string, code: string, new_password: string) {
+  return http.post<{ message: string }>('/api/auth/reset-password-code', {
+    email,
+    code,
+    new_password,
+  })
 }
 
 export function refreshTokens(refresh_token: string) {

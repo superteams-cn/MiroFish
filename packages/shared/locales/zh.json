@@ -71,7 +71,19 @@
     "verifyPageTitle": "邮箱验证",
     "verifyPageVerifying": "正在验证邮箱…",
     "verifyPageSuccess": "邮箱验证成功，现在可以发起预测了",
-    "verifyPageFailed": "验证失败，链接可能已过期"
+    "verifyPageFailed": "验证失败，链接可能已过期",
+    "codeEmailSubject": "SuperFish 验证码",
+    "codeEmailBody": "你的验证码是：{code}\n\n10 分钟内有效。如非本人操作，请忽略此邮件。",
+    "invalidPurpose": "验证码用途无效",
+    "codeSent": "验证码已发送，请查收邮箱",
+    "sendCode": "发送验证码",
+    "sendCodeIn": "重新发送（{sec}s）",
+    "codeRequired": "请输入验证码",
+    "passwordLogin": "密码登录",
+    "codeLogin": "验证码登录",
+    "submitCodeLogin": "登录",
+    "resetByCode": "用验证码重置",
+    "resetByLink": "用邮件链接重置"
   },
   "common": {
     "confirm": "确认",

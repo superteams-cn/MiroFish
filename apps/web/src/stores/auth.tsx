@@ -12,6 +12,7 @@ import {
 import {
   getMe,
   loginUser,
+  loginWithCode as apiLoginWithCode,
   registerUser,
   resendVerification as apiResendVerification,
   verifyEmailCode as apiVerifyEmailCode,
@@ -32,7 +33,8 @@ interface AuthContextValue {
   closeAuth: () => void
   setDialogMode: (mode: AuthMode) => void
   login: (email: string, password: string) => Promise<void>
-  register: (email: string, password: string, displayName?: string) => Promise<void>
+  loginWithCode: (email: string, code: string) => Promise<void>
+  register: (email: string, password: string, code: string, displayName?: string) => Promise<void>
   logout: () => void
   refreshUser: () => Promise<void>
   resendVerification: () => Promise<string>
@@ -92,9 +94,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setDialogOpen(false)
   }, [])
 
-  const register = useCallback(async (email: string, password: string, displayName?: string) => {
-    const res = await registerUser({ email, password, display_name: displayName })
-    if (!res.success || !res.data) throw new Error(res.error || 'register failed')
+  const register = useCallback(
+    async (email: string, password: string, code: string, displayName?: string) => {
+      const res = await registerUser({ email, password, code, display_name: displayName })
+      if (!res.success || !res.data) throw new Error(res.error || 'register failed')
+      setTokens(res.data.access_token, res.data.refresh_token)
+      setUser(res.data.user)
+      setDialogOpen(false)
+    },
+    [],
+  )
+
+  const loginWithCode = useCallback(async (email: string, code: string) => {
+    const res = await apiLoginWithCode({ email, code })
+    if (!res.success || !res.data) throw new Error(res.error || 'login failed')
     setTokens(res.data.access_token, res.data.refresh_token)
     setUser(res.data.user)
     setDialogOpen(false)
@@ -133,6 +146,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       closeAuth,
       setDialogMode,
       login,
+      loginWithCode,
       register,
       logout,
       refreshUser,
@@ -147,6 +161,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       openAuth,
       closeAuth,
       login,
+      loginWithCode,
       register,
       logout,
       refreshUser,

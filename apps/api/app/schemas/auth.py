@@ -9,11 +9,12 @@ from pydantic import BaseModel, Field
 
 
 class RegisterRequest(BaseModel):
-    """注册请求体。"""
+    """注册请求体（注册即验证：需带邮箱验证码）。"""
 
     email: str | None = Field(default=None, description="邮箱，必填")
     password: str | None = Field(default=None, description="密码，必填")
     display_name: str | None = Field(default=None, description="昵称，可选")
+    code: str | None = Field(default=None, description="邮箱验证码，必填")
 
 
 class LoginRequest(BaseModel):
@@ -52,3 +53,25 @@ class VerifyCodeRequest(BaseModel):
     """邮箱验证码请求体（OTP）。"""
 
     code: str | None = Field(default=None, description="6 位验证码，必填")
+
+
+class SendCodeRequest(BaseModel):
+    """统一发送验证码请求体。"""
+
+    email: str | None = Field(default=None, description="邮箱，必填")
+    purpose: str | None = Field(default=None, description="用途：login / register / reset")
+
+
+class LoginCodeRequest(BaseModel):
+    """验证码登录请求体（无密码）。"""
+
+    email: str | None = Field(default=None, description="邮箱，必填")
+    code: str | None = Field(default=None, description="6 位验证码，必填")
+
+
+class ResetPasswordCodeRequest(BaseModel):
+    """验证码重置密码请求体。"""
+
+    email: str | None = Field(default=None, description="邮箱，必填")
+    code: str | None = Field(default=None, description="6 位验证码，必填")
+    new_password: str | None = Field(default=None, description="新密码，必填")

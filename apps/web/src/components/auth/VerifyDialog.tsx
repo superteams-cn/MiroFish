@@ -11,8 +11,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { OtpInput } from '@/components/auth/OtpInput'
 import { useAuth } from '@/stores/auth'
 
 /** 从 axios 错误中取后端本地化错误文案，回退到通用提示。 */
@@ -52,12 +52,11 @@ export function VerifyDialog({ open, onClose }: VerifyDialogProps) {
     return () => window.clearTimeout(timerRef.current)
   }, [cooldown])
 
-  const onSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (submitting) return
+  const submitCode = async (value: string) => {
+    if (submitting || value.length < 6) return
     setSubmitting(true)
     try {
-      await verifyWithCode(code.trim())
+      await verifyWithCode(value.trim())
       toast.success(t('auth.verifySuccess'))
       onClose()
     } catch (err) {
@@ -65,6 +64,11 @@ export function VerifyDialog({ open, onClose }: VerifyDialogProps) {
     } finally {
       setSubmitting(false)
     }
+  }
+
+  const onSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    void submitCode(code)
   }
 
   const onResend = async () => {
@@ -95,21 +99,9 @@ export function VerifyDialog({ open, onClose }: VerifyDialogProps) {
         </DialogHeader>
 
         <form onSubmit={onSubmit} className="space-y-4">
-          <div className="space-y-1.5">
-            <Label htmlFor="verify-code">{t('auth.verifyCodeLabel')}</Label>
-            <Input
-              id="verify-code"
-              type="text"
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              required
-              pattern="\d{6}"
-              maxLength={6}
-              value={code}
-              onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-              placeholder={t('auth.verifyCodePlaceholder')}
-              className="text-center text-lg tracking-[0.4em]"
-            />
+          <div className="space-y-2">
+            <Label>{t('auth.verifyCodeLabel')}</Label>
+            <OtpInput value={code} onChange={setCode} onComplete={(v) => void submitCode(v)} />
           </div>
 
           <Button type="submit" className="w-full gap-2" disabled={submitting || code.length < 6}>
