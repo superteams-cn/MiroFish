@@ -99,6 +99,81 @@ def test_report_list_reachable(client: TestClient):
     assert r.json()["success"] is True
 
 
+def _create_user(email: str, password: str, *, verified: bool = True) -> str:
+    """直接落库一个用户，返回 user_id（用于鉴权相关用例）。"""
+    import time
+    import uuid
+
+    from app.core.db import session_scope
+    from app.core.security import hash_password
+    from app.db_models import UserRow
+
+    user_id = f"user_login_{uuid.uuid4().hex[:10]}"
+    now = str(int(time.time()))
+    with session_scope() as session:
+        session.add(
+            UserRow(
+                user_id=user_id,
+                email=email,
+                password_hash=hash_password(password),
+                display_name="login-test",
+                status="active",
+                email_verified=verified,
+                created_at=now,
+                updated_at=now,
+            )
+        )
+    return user_id
+
+
+def test_auth_login_success_and_me():
+    """登录走 UserRepository.get_by_email；/me 走 get_current_user。"""
+    import uuid
+
+    c = TestClient(app)
+    email = f"login_{uuid.uuid4().hex[:8]}@test.local"
+    _create_user(email, "secret-pass-123")
+
+    r = c.post("/api/auth/login", json={"email": email, "password": "secret-pass-123"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["success"] is True
+    access = body["data"]["access_token"]
+    refresh = body["data"]["refresh_token"]
+    assert body["data"]["user"]["email"] == email
+
+    me = c.get("/api/auth/me", headers={"Authorization": f"Bearer {access}"})
+    assert me.status_code == 200
+    assert me.json()["data"]["email"] == email
+
+    # refresh 走 UserRepository.get_by_id
+    rr = c.post("/api/auth/refresh", json={"refresh_token": refresh})
+    assert rr.status_code == 200
+    assert rr.json()["data"]["access_token"]
+
+
+def test_auth_login_wrong_password():
+    import uuid
+
+    c = TestClient(app)
+    email = f"login_{uuid.uuid4().hex[:8]}@test.local"
+    _create_user(email, "secret-pass-123")
+    r = c.post("/api/auth/login", json={"email": email, "password": "WRONG"})
+    assert r.status_code == 401
+    assert r.json()["success"] is False
+
+
+def test_auth_validation_400():
+    c = TestClient(app)
+    assert c.post("/api/auth/login", json={}).status_code == 400
+    assert c.post("/api/auth/refresh", json={}).status_code == 400
+
+
+def test_auth_me_requires_auth():
+    c = TestClient(app)
+    assert c.get("/api/auth/me").status_code == 401
+
+
 def test_openapi_route_counts(client: TestClient):
     """三大路由端点数量符合预期（防止路由意外丢失）。"""
     paths = client.get("/openapi.json").json()["paths"]

@@ -11,7 +11,6 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, Request
 
-from ..core.db import session_scope
 from ..core.deps import get_current_user, use_locale
 from ..core.errors import error_response as _error  # 统一错误信封
 from ..core.logger import get_logger
@@ -26,7 +25,8 @@ from ..core.security import (
     verify_password,
 )
 from ..core.settings import settings
-from ..db_models import UserRow
+from ..domain.user import User
+from ..repositories.user_repo import UserRepository
 from ..schemas.auth import (
     ForgotPasswordRequest,
     LoginCodeRequest,
@@ -57,15 +57,8 @@ _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 _MIN_PASSWORD_LEN = 8
 
 
-def _public_user(user: UserRow) -> dict:
-    return {
-        "user_id": user.user_id,
-        "email": user.email,
-        "display_name": user.display_name,
-        "status": user.status,
-        "email_verified": user.email_verified,
-        "created_at": user.created_at,
-    }
+def _public_user(user: User) -> dict:
+    return user.to_public_dict()
 
 
 def _issue_tokens(user_id: str) -> dict:
@@ -122,9 +115,8 @@ def send_code(req: SendCodeRequest, request: Request):
     ) or not check_rate_limit(f"auth:sendcode:{purpose}:email:{email}", 5, 600):
         return _error(t("auth.rateLimited"), 429)
 
-    with session_scope() as session:
-        user = session.query(UserRow).filter(UserRow.email == email).first()
-        exists = user is not None and user.status == "active"
+    user = UserRepository.get_by_email(email)
+    exists = user is not None and user.is_active
 
     should_send = (purpose in ("login", "reset") and exists) or (
         purpose == "register" and not exists
@@ -154,9 +146,8 @@ def register(req: RegisterRequest, request: Request):
         return _error(t("auth.rateLimited"), 429)
 
     # 邮箱唯一性先行（已注册给明确提示，不消费验证码）
-    with session_scope() as session:
-        if session.query(UserRow).filter(UserRow.email == email).first() is not None:
-            return _error(t("auth.emailTaken"), 409)
+    if UserRepository.email_exists(email):
+        return _error(t("auth.emailTaken"), 409)
 
     # 校验注册验证码（消费一次性）
     if not verify_code(f"register:{email}", code):
@@ -166,23 +157,20 @@ def register(req: RegisterRequest, request: Request):
     user_id = "user_" + uuid.uuid4().hex[:16]
     display_name = (req.display_name or "").strip() or email.split("@")[0]
 
-    with session_scope() as session:
-        # 二次确认唯一（防 TOCTOU；唯一索引兜底）
-        if session.query(UserRow).filter(UserRow.email == email).first() is not None:
-            return _error(t("auth.emailTaken"), 409)
-        user = UserRow(
+    try:
+        user = UserRepository.create(
             user_id=user_id,
             email=email,
             password_hash=hash_password(password),
             display_name=display_name,
-            status="active",
             email_verified=True,  # 验证码已证明邮箱归属
             created_at=now,
             updated_at=now,
         )
-        session.add(user)
-        session.flush()
-        data = {"user": _public_user(user), **_issue_tokens(user.user_id)}
+    except ValueError:
+        # 二次确认唯一失败（TOCTOU 竞态；唯一索引兜底）
+        return _error(t("auth.emailTaken"), 409)
+    data = {"user": _public_user(user), **_issue_tokens(user.user_id)}
 
     logger.info(f"新用户注册(已验证): {email}")
     return {"success": True, "data": data}
@@ -203,15 +191,14 @@ def login(req: LoginRequest, request: Request):
     ) or not check_rate_limit(f"auth:login:email:{email}", settings.rate_limit_login_per_min, 60):
         return _error(t("auth.rateLimited"), 429)
 
-    with session_scope() as session:
-        user = session.query(UserRow).filter(UserRow.email == email).first()
-        # 无论用户是否存在都走一次校验，降低用户枚举差异（错误信息保持一致）
-        ok = user is not None and verify_password(password, user.password_hash)
-        if not ok:
-            return _error(t("auth.invalidCredentials"), 401)
-        if user.status != "active":
-            return _error(t("auth.accountDisabled"), 403)
-        data = {"user": _public_user(user), **_issue_tokens(user.user_id)}
+    user = UserRepository.get_by_email(email)
+    # 无论用户是否存在都走一次校验，降低用户枚举差异（错误信息保持一致）
+    ok = user is not None and verify_password(password, user.password_hash)
+    if not ok:
+        return _error(t("auth.invalidCredentials"), 401)
+    if not user.is_active:
+        return _error(t("auth.accountDisabled"), 403)
+    data = {"user": _public_user(user), **_issue_tokens(user.user_id)}
 
     return {"success": True, "data": data}
 
@@ -231,15 +218,14 @@ def login_code(req: LoginCodeRequest, request: Request):
     if not verify_code(f"login:{email}", code):
         return _error(t("auth.invalidVerifyCode"), 400)
 
-    with session_scope() as session:
-        user = session.query(UserRow).filter(UserRow.email == email).first()
-        if user is None or user.status != "active":
-            return _error(t("auth.invalidCredentials"), 401)
-        # 验证码登录已证明邮箱归属，顺带置为已验证
-        if not user.email_verified:
-            user.email_verified = True
-            user.updated_at = datetime.now().isoformat()
-        data = {"user": _public_user(user), **_issue_tokens(user.user_id)}
+    user = UserRepository.get_by_email(email)
+    if user is None or not user.is_active:
+        return _error(t("auth.invalidCredentials"), 401)
+    # 验证码登录已证明邮箱归属，顺带置为已验证
+    if not user.email_verified:
+        UserRepository.mark_verified(user.user_id)
+        user.email_verified = True  # 同步快照，使返回的 public 反映已验证
+    data = {"user": _public_user(user), **_issue_tokens(user.user_id)}
 
     return {"success": True, "data": data}
 
@@ -256,11 +242,10 @@ def refresh(req: RefreshRequest):
         return _error(t("auth.invalidToken"), 401)
 
     user_id = payload.get("sub")
-    with session_scope() as session:
-        user = session.get(UserRow, user_id)
-        if user is None or user.status != "active":
-            return _error(t("auth.invalidToken"), 401)
-        data = _issue_tokens(user.user_id)
+    user = UserRepository.get_by_id(user_id)
+    if user is None or not user.is_active:
+        return _error(t("auth.invalidToken"), 401)
+    data = _issue_tokens(user.user_id)
 
     return {"success": True, "data": data}
 
@@ -283,17 +268,16 @@ def forgot_password(req: ForgotPasswordRequest, request: Request):
     ):
         return _error(t("auth.rateLimited"), 429)
 
-    with session_scope() as session:
-        user = session.query(UserRow).filter(UserRow.email == email).first()
-        if user is not None and user.status == "active":
-            token = create_reset_token(user.user_id, user.password_hash)
-            link = f"{settings.web_base_url}/reset-password?token={token}"
-            send_email_async(
-                user.email,
-                t("auth.resetEmailSubject"),
-                t("auth.resetEmailBody", link=link),
-            )
-            logger.info(f"已发送重置密码邮件: {email}")
+    user = UserRepository.get_by_email(email)
+    if user is not None and user.is_active:
+        token = create_reset_token(user.user_id, user.password_hash)
+        link = f"{settings.web_base_url}/reset-password?token={token}"
+        send_email_async(
+            user.email,
+            t("auth.resetEmailSubject"),
+            t("auth.resetEmailBody", link=link),
+        )
+        logger.info(f"已发送重置密码邮件: {email}")
 
     return {"success": True, "data": {"message": t("auth.resetEmailSent")}}
 
@@ -313,17 +297,15 @@ def reset_password(req: ResetPasswordRequest):
     except Exception:
         return _error(t("auth.invalidResetToken"), 400)
 
-    with session_scope() as session:
-        user = session.get(UserRow, payload.get("sub"))
-        # 指纹不符 = 密码已改过（旧链接） → 失效
-        if (
-            user is None
-            or user.status != "active"
-            or payload.get("pwf") != password_fingerprint(user.password_hash)
-        ):
-            return _error(t("auth.invalidResetToken"), 400)
-        user.password_hash = hash_password(new_password)
-        user.updated_at = datetime.now().isoformat()
+    user = UserRepository.get_by_id(payload.get("sub"))
+    # 指纹不符 = 密码已改过（旧链接） → 失效
+    if (
+        user is None
+        or not user.is_active
+        or payload.get("pwf") != password_fingerprint(user.password_hash)
+    ):
+        return _error(t("auth.invalidResetToken"), 400)
+    UserRepository.set_password(user.user_id, hash_password(new_password))
 
     logger.info(f"密码已重置: user={payload.get('sub')}")
     return {"success": True, "data": {"message": t("auth.resetSuccess")}}
@@ -343,12 +325,10 @@ def reset_password_code(req: ResetPasswordCodeRequest):
     if not verify_code(f"reset:{email}", code):
         return _error(t("auth.invalidVerifyCode"), 400)
 
-    with session_scope() as session:
-        user = session.query(UserRow).filter(UserRow.email == email).first()
-        if user is None or user.status != "active":
-            return _error(t("auth.invalidVerifyCode"), 400)
-        user.password_hash = hash_password(new_password)
-        user.updated_at = datetime.now().isoformat()
+    user = UserRepository.get_by_email(email)
+    if user is None or not user.is_active:
+        return _error(t("auth.invalidVerifyCode"), 400)
+    UserRepository.set_password(user.user_id, hash_password(new_password))
 
     logger.info(f"密码已重置(验证码): {email}")
     return {"success": True, "data": {"message": t("auth.resetSuccess")}}
@@ -365,13 +345,10 @@ def verify_email(req: VerifyEmailRequest):
     except Exception:
         return _error(t("auth.invalidVerifyToken"), 400)
 
-    with session_scope() as session:
-        user = session.get(UserRow, payload.get("sub"))
-        if user is None or user.status != "active":
-            return _error(t("auth.invalidVerifyToken"), 400)
-        if not user.email_verified:
-            user.email_verified = True
-            user.updated_at = datetime.now().isoformat()
+    user = UserRepository.get_by_id(payload.get("sub"))
+    if user is None or not user.is_active:
+        return _error(t("auth.invalidVerifyToken"), 400)
+    UserRepository.mark_verified(user.user_id)
 
     logger.info(f"邮箱已验证: user={payload.get('sub')}")
     return {"success": True, "data": {"message": t("auth.verifySuccess")}}
@@ -394,13 +371,10 @@ def verify_email_code(req: VerifyCodeRequest, current=Depends(get_current_user))
     if not verify_code(f"verify:{current['user_id']}", code):
         return _error(t("auth.invalidVerifyCode"), 400)
 
-    with session_scope() as session:
-        user = session.get(UserRow, current["user_id"])
-        if user is None or user.status != "active":
-            return _error(t("auth.invalidVerifyCode"), 400)
-        if not user.email_verified:
-            user.email_verified = True
-            user.updated_at = datetime.now().isoformat()
+    user = UserRepository.get_by_id(current["user_id"])
+    if user is None or not user.is_active:
+        return _error(t("auth.invalidVerifyCode"), 400)
+    UserRepository.mark_verified(user.user_id)
 
     logger.info(f"邮箱已验证(验证码): user={current['user_id']}")
     return {"success": True, "data": {"message": t("auth.verifySuccess")}}
