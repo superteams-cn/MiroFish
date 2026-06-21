@@ -55,6 +55,53 @@ def test_parse_etime_formats():
     assert SimulationRunner._parse_etime("") is None
 
 
+def test_decide_terminal_status():
+    from app.services.simulation import process_control as pc
+
+    # already_completed 优先（_read_action_log 已据 simulation_end 置 completed）
+    assert (
+        pc.decide_terminal_status(
+            already_completed=True, is_own_process=True, exit_code=1, has_sim_end=False
+        )
+        == RunnerStatus.COMPLETED
+    )
+    # 本进程：退出码 0 → COMPLETED
+    assert (
+        pc.decide_terminal_status(
+            already_completed=False, is_own_process=True, exit_code=0, has_sim_end=False
+        )
+        == RunnerStatus.COMPLETED
+    )
+    # 本进程：非 0 退出码但已见 simulation_end → COMPLETED
+    assert (
+        pc.decide_terminal_status(
+            already_completed=False, is_own_process=True, exit_code=137, has_sim_end=True
+        )
+        == RunnerStatus.COMPLETED
+    )
+    # 本进程：非 0 退出码且未跑完 → FAILED
+    assert (
+        pc.decide_terminal_status(
+            already_completed=False, is_own_process=True, exit_code=1, has_sim_end=False
+        )
+        == RunnerStatus.FAILED
+    )
+    # 接管孤儿（无退出码）：见 simulation_end → COMPLETED
+    assert (
+        pc.decide_terminal_status(
+            already_completed=False, is_own_process=False, exit_code=None, has_sim_end=True
+        )
+        == RunnerStatus.COMPLETED
+    )
+    # 接管孤儿：进程消失且未跑完 → INTERRUPTED
+    assert (
+        pc.decide_terminal_status(
+            already_completed=False, is_own_process=False, exit_code=None, has_sim_end=False
+        )
+        == RunnerStatus.INTERRUPTED
+    )
+
+
 def test_pid_alive_basic():
     assert SimulationRunner._pid_alive(os.getpid()) is True
     assert SimulationRunner._pid_alive(None) is False

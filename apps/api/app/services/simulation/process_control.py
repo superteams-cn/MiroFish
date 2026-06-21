@@ -10,7 +10,36 @@ import subprocess
 import sys
 import time
 
+from ...domain.run_state import RunnerStatus
+
 IS_WINDOWS = sys.platform == "win32"
+
+
+def decide_terminal_status(
+    *,
+    already_completed: bool,
+    is_own_process: bool,
+    exit_code: int | None,
+    has_sim_end: bool,
+) -> RunnerStatus:
+    """进程退出后的终态判定（纯决策，不落副作用）。
+
+    - ``already_completed``：监控期间 _read_action_log 已据 simulation_end 置为 COMPLETED。
+    - 本进程亲自 Popen（``is_own_process``）：退出码 0 或已见 simulation_end → COMPLETED，否则 FAILED。
+    - 接管的孤儿（无退出码）：见 simulation_end → COMPLETED，否则 INTERRUPTED。
+
+    completed_at / error 等副作用由调用方依据返回的状态处理。
+    """
+    if already_completed:
+        return RunnerStatus.COMPLETED
+    if is_own_process:
+        if exit_code == 0 or has_sim_end:
+            return RunnerStatus.COMPLETED
+        return RunnerStatus.FAILED
+    # 接管的孤儿无退出码
+    if has_sim_end:
+        return RunnerStatus.COMPLETED
+    return RunnerStatus.INTERRUPTED
 
 
 def parse_etime(s: str) -> int | None:

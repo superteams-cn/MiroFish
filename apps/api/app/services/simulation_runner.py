@@ -629,40 +629,32 @@ class SimulationRunner:
                 )
                 state.reddit_log_offset = reddit_position
 
-            # 终态判定
-            if state.runner_status == RunnerStatus.COMPLETED:
-                # _read_action_log 已据 simulation_end 置为 completed
+            # 终态判定（纯决策见 pc.decide_terminal_status；此处仅落副作用）
+            exit_code = process.returncode if process is not None else None
+            new_status = pc.decide_terminal_status(
+                already_completed=state.runner_status == RunnerStatus.COMPLETED,
+                is_own_process=process is not None,
+                exit_code=exit_code,
+                has_sim_end=cls._has_simulation_end(sim_dir),
+            )
+            state.runner_status = new_status
+            if new_status == RunnerStatus.COMPLETED:
                 if not state.completed_at:
                     state.completed_at = datetime.now().isoformat()
                 logger.info(f"模拟完成: {simulation_id}")
-            elif process is not None:
-                # 本进程亲自启动：用退出码判定
-                exit_code = process.returncode
-                if exit_code == 0 or cls._has_simulation_end(sim_dir):
-                    state.runner_status = RunnerStatus.COMPLETED
-                    state.completed_at = datetime.now().isoformat()
-                    logger.info(f"模拟完成: {simulation_id}")
-                else:
-                    state.runner_status = RunnerStatus.FAILED
-                    main_log_path = os.path.join(sim_dir, "simulation.log")
-                    error_info = ""
-                    try:
-                        if os.path.exists(main_log_path):
-                            with open(main_log_path, encoding="utf-8") as f:
-                                error_info = f.read()[-2000:]
-                    except Exception:
-                        pass
-                    state.error = f"进程退出码: {exit_code}, 错误: {error_info}"
-                    logger.error(f"模拟失败: {simulation_id}, error={state.error}")
-            else:
-                # 接管的孤儿无退出码：据 simulation_end 判定 completed / interrupted
-                if cls._has_simulation_end(sim_dir):
-                    state.runner_status = RunnerStatus.COMPLETED
-                    state.completed_at = datetime.now().isoformat()
-                    logger.info(f"接管的模拟自然完成: {simulation_id}")
-                else:
-                    state.runner_status = RunnerStatus.INTERRUPTED
-                    logger.warning(f"接管的模拟进程已消失且未跑完，标记中断: {simulation_id}")
+            elif new_status == RunnerStatus.FAILED:
+                main_log_path = os.path.join(sim_dir, "simulation.log")
+                error_info = ""
+                try:
+                    if os.path.exists(main_log_path):
+                        with open(main_log_path, encoding="utf-8") as f:
+                            error_info = f.read()[-2000:]
+                except Exception:
+                    pass
+                state.error = f"进程退出码: {exit_code}, 错误: {error_info}"
+                logger.error(f"模拟失败: {simulation_id}, error={state.error}")
+            else:  # INTERRUPTED
+                logger.warning(f"接管的模拟进程已消失且未跑完，标记中断: {simulation_id}")
 
             # 任意终态都上传 agent 记忆快照到 S3：强停/中断的模拟同样已周期性落盘，
             # 用户多半正是对"提前结束"的推演发起采访（无 agent_memory 时该调用是空操作）。
