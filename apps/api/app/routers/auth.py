@@ -21,6 +21,7 @@ from ..schemas.auth import (
     RefreshRequest,
     RegisterRequest,
     ResetPasswordRequest,
+    VerifyCodeRequest,
     VerifyEmailRequest,
 )
 from ..settings import settings
@@ -38,6 +39,7 @@ from ..utils.security import (
     password_fingerprint,
     verify_password,
 )
+from ..utils.verify_code import generate_code, store_code, verify_code
 
 logger = get_logger("superfish.auth")
 
@@ -71,10 +73,17 @@ def _issue_tokens(user_id: str) -> dict:
 
 
 def _send_verification_email(user_id: str, email: str) -> None:
-    """发送邮箱验证邮件（开发桩下打印到日志）。"""
+    """发送邮箱验证邮件：同时附「魔法链接」与「6 位验证码」两种通道。"""
     token = create_verify_token(user_id)
     link = f"{settings.web_base_url}/verify-email?token={token}"
-    send_email_async(email, t("auth.verifyEmailSubject"), t("auth.verifyEmailBody", link=link))
+    code = generate_code()
+    # 验证码存 Redis(带 TTL)；Redis 不可用时仅链接可用，不阻塞发信
+    store_code(user_id, code)
+    send_email_async(
+        email,
+        t("auth.verifyEmailSubject"),
+        t("auth.verifyEmailBody", link=link, code=code),
+    )
     logger.info(f"已发送邮箱验证邮件: {email}")
 
 
@@ -261,6 +270,35 @@ def verify_email(req: VerifyEmailRequest):
             user.updated_at = datetime.now().isoformat()
 
     logger.info(f"邮箱已验证: user={payload.get('sub')}")
+    return {"success": True, "data": {"message": t("auth.verifySuccess")}}
+
+
+@router.post("/verify-email-code")
+def verify_email_code(req: VerifyCodeRequest, current=Depends(get_current_user)):
+    """凭 6 位验证码确认邮箱（需登录，验证码绑定当前用户）。
+
+    与魔法链接并存，校验同一件事。按用户限流防爆破；已验证则幂等返回成功。
+    """
+    if current.get("email_verified"):
+        return {"success": True, "data": {"message": t("auth.alreadyVerified")}}
+
+    # 限流：每用户 10 分钟最多 5 次尝试，挡 6 位码爆破
+    if not check_rate_limit(f"auth:verifycode:user:{current['user_id']}", 5, 600):
+        return _error(t("auth.rateLimited"), 429)
+
+    code = (req.code or "").strip()
+    if not verify_code(current["user_id"], code):
+        return _error(t("auth.invalidVerifyCode"), 400)
+
+    with session_scope() as session:
+        user = session.get(UserRow, current["user_id"])
+        if user is None or user.status != "active":
+            return _error(t("auth.invalidVerifyCode"), 400)
+        if not user.email_verified:
+            user.email_verified = True
+            user.updated_at = datetime.now().isoformat()
+
+    logger.info(f"邮箱已验证(验证码): user={current['user_id']}")
     return {"success": True, "data": {"message": t("auth.verifySuccess")}}
 
 

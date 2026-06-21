@@ -14,6 +14,7 @@ import {
   loginUser,
   registerUser,
   resendVerification as apiResendVerification,
+  verifyEmailCode as apiVerifyEmailCode,
   type AuthUser,
 } from '@/lib/api/auth'
 import { setUnauthorizedHandler } from '@/lib/api/client'
@@ -35,6 +36,7 @@ interface AuthContextValue {
   logout: () => void
   refreshUser: () => Promise<void>
   resendVerification: () => Promise<string>
+  verifyWithCode: (code: string) => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -110,6 +112,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return res.data?.message || ''
   }, [])
 
+  // 验证码校验成功后刷新本地用户态（email_verified→true，提示条随即消失）
+  const verifyWithCode = useCallback(
+    async (code: string) => {
+      const res = await apiVerifyEmailCode(code)
+      if (!res.success) throw new Error(res.error || 'verify failed')
+      await refreshUser()
+    },
+    [refreshUser],
+  )
+
   const value = useMemo<AuthContextValue>(
     () => ({
       user,
@@ -125,6 +137,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       logout,
       refreshUser,
       resendVerification,
+      verifyWithCode,
     }),
     [
       user,
@@ -138,6 +151,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       logout,
       refreshUser,
       resendVerification,
+      verifyWithCode,
     ],
   )
 

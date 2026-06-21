@@ -12,7 +12,6 @@ import {
   Paperclip,
   MailWarning,
 } from 'lucide-react'
-import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -20,6 +19,7 @@ import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { LanguageSwitcher } from '@/components/LanguageSwitcher'
 import { ThemeSwitcher } from '@/components/ThemeSwitcher'
 import { AuthButton } from '@/components/auth/AuthButton'
+import { VerifyDialog } from '@/components/auth/VerifyDialog'
 import { HistoryDatabase } from '@/components/HistoryDatabase'
 import { Logo } from '@/components/common/Logo'
 import { setPendingUpload } from '@/stores/pendingUpload'
@@ -78,22 +78,9 @@ function UserBubble({ children }: { children: ReactNode }) {
 export default function HomePage() {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const { isAuthenticated, openAuth, user, resendVerification } = useAuth()
-  const [resending, setResending] = useState(false)
+  const { isAuthenticated, openAuth, user } = useAuth()
+  const [verifyOpen, setVerifyOpen] = useState(false)
   const needsVerify = isAuthenticated && user != null && !user.email_verified
-
-  const onResendVerification = async () => {
-    if (resending) return
-    setResending(true)
-    try {
-      const msg = await resendVerification()
-      toast.success(msg || t('auth.verifyEmailSent'))
-    } catch (err) {
-      toast.error((err as Error)?.message || t('auth.genericError'))
-    } finally {
-      setResending(false)
-    }
-  }
   const fileInputRef = useRef<HTMLInputElement>(null)
   const timerRef = useRef<number>()
 
@@ -209,11 +196,10 @@ export default function HomePage() {
             <span className="text-muted-foreground flex-1">{t('auth.verifyBanner')}</span>
             <button
               type="button"
-              onClick={onResendVerification}
-              disabled={resending}
-              className="text-primary shrink-0 font-medium hover:underline disabled:opacity-50"
+              onClick={() => setVerifyOpen(true)}
+              className="text-primary shrink-0 font-medium hover:underline"
             >
-              {resending ? t('auth.submitting') : t('auth.resendVerification')}
+              {t('auth.goVerify')}
             </button>
           </div>
         </div>
@@ -396,6 +382,8 @@ export default function HomePage() {
           )}
         </DialogContent>
       </Dialog>
+
+      <VerifyDialog open={verifyOpen} onClose={() => setVerifyOpen(false)} />
     </div>
   )
 }

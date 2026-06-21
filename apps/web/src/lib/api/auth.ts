@@ -53,3 +53,7 @@ export function verifyEmail(token: string) {
 export function resendVerification() {
   return http.post<{ message: string }>('/api/auth/resend-verification', {})
 }
+
+export function verifyEmailCode(code: string) {
+  return http.post<{ message: string }>('/api/auth/verify-email-code', { code })
+}

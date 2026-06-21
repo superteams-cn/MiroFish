@@ -41,6 +41,11 @@ def _get_client() -> redis.Redis | None:
         return None
 
 
+def get_redis() -> "redis.Redis | None":
+    """对外暴露共享 Redis 客户端（可能为 None，调用方需自行降级）。"""
+    return _get_client()
+
+
 def check_rate_limit(key: str, limit: int, window_seconds: int) -> bool:
     """滑动窗口限流：window_seconds 内最多 limit 次。
 

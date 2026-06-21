@@ -43,6 +43,12 @@ class ResetPasswordRequest(BaseModel):
 
 
 class VerifyEmailRequest(BaseModel):
-    """邮箱验证请求体。"""
+    """邮箱验证请求体（魔法链接）。"""
 
     token: str | None = Field(default=None, description="验证令牌，必填")
+
+
+class VerifyCodeRequest(BaseModel):
+    """邮箱验证码请求体（OTP）。"""
+
+    code: str | None = Field(default=None, description="6 位验证码，必填")
