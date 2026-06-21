@@ -53,9 +53,7 @@ class Settings(BaseSettings):
     graph_extract_max_triplets: int = 20
 
     # ===== 知识图谱 =====
-    # 图谱已改存 Postgres（见 repositories/graph_repo.py），无需独立图数据库配置。
-    # 旧 Neo4j 连接参数（仅历史数据迁移脚本 scripts/backfill_graphs_to_postgres.py 用）
-    # 已移出此处，迁移时通过环境变量 NEO4J_URI/NEO4J_USER/NEO4J_PASSWORD 临时提供。
+    # 图谱存于 Postgres（见 graphs 表 / repositories/graph_repo.py），无需独立图数据库配置。
 
     # ===== 用户体系 / 鉴权（JWT）=====
     # 上线前务必通过环境变量 JWT_SECRET 覆盖为高强度随机值；默认值仅供本地开发。
