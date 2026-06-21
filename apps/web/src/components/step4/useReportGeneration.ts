@@ -8,6 +8,7 @@ import {
   getReportProgress,
   getReportSections,
 } from '@/lib/api/report'
+import { usePolling } from '@/hooks/usePolling'
 import type { AgentLogEntry, ReportOutline } from '@/lib/step4-types'
 import type { WorkflowStatus } from '@/components/WorkflowLayout'
 
@@ -35,20 +36,23 @@ export function useReportGeneration({ reportId, addLog, onUpdateStatus }: Option
 
   const agentLine = useRef(0)
   const consoleLine = useRef(0)
-  const agentTimer = useRef<ReturnType<typeof setInterval> | null>(null)
-  const consoleTimer = useRef<ReturnType<typeof setInterval> | null>(null)
-  const snapshotTimer = useRef<ReturnType<typeof setInterval> | null>(null)
+  // 三路轮询回调存 ref，供 usePolling 取最新实现（打破定义顺序的循环依赖）
+  const fetchSnapshotRef = useRef<() => void | Promise<void>>(() => {})
+  const fetchAgentLogRef = useRef<() => void | Promise<void>>(() => {})
+  const fetchConsoleLogRef = useRef<() => void | Promise<void>>(() => {})
   const fetchingSnapshot = useRef(false)
   const outlineRef = useRef<ReportOutline | null>(null)
 
+  // 三路轮询：快照 @2500、Agent 日志 @2000、控制台 @1500；start 时各立即拉一次首屏
+  const snapshotPoll = usePolling(() => fetchSnapshotRef.current(), 2500, { immediate: true })
+  const agentPoll = usePolling(() => fetchAgentLogRef.current(), 2000, { immediate: true })
+  const consolePoll = usePolling(() => fetchConsoleLogRef.current(), 1500, { immediate: true })
+
   const stopPolling = useCallback(() => {
-    if (agentTimer.current) clearInterval(agentTimer.current)
-    if (consoleTimer.current) clearInterval(consoleTimer.current)
-    if (snapshotTimer.current) clearInterval(snapshotTimer.current)
-    agentTimer.current = null
-    consoleTimer.current = null
-    snapshotTimer.current = null
-  }, [])
+    snapshotPoll.stop()
+    agentPoll.stop()
+    consolePoll.stop()
+  }, [snapshotPoll, agentPoll, consolePoll])
 
   const mergeSectionContent = useCallback((sectionIndex: number | undefined, content: unknown) => {
     if (!sectionIndex || typeof content !== 'string' || !content.trim()) return
@@ -203,16 +207,18 @@ export function useReportGeneration({ reportId, addLog, onUpdateStatus }: Option
     fetchingSnapshot.current = false
   }, [stopPolling])
 
-  // 拉首屏 + 启动三路轮询（仅在有 reportId 时）。
+  // 让 usePolling 的稳定回调始终指向最新的 fetch 实现
+  fetchSnapshotRef.current = fetchReportSnapshot
+  fetchAgentLogRef.current = fetchAgentLog
+  fetchConsoleLogRef.current = fetchConsoleLog
+
+  // 拉首屏 + 启动三路轮询（仅在有 reportId 时）。immediate 使 start 即拉一次首屏。
   const startPolling = useCallback(() => {
     if (!reportId) return
-    void fetchReportSnapshot()
-    void fetchAgentLog()
-    void fetchConsoleLog()
-    snapshotTimer.current = setInterval(fetchReportSnapshot, 2500)
-    agentTimer.current = setInterval(fetchAgentLog, 2000)
-    consoleTimer.current = setInterval(fetchConsoleLog, 1500)
-  }, [fetchAgentLog, fetchConsoleLog, fetchReportSnapshot, reportId])
+    snapshotPoll.start()
+    agentPoll.start()
+    consolePoll.start()
+  }, [snapshotPoll, agentPoll, consolePoll, reportId])
 
   useEffect(() => {
     resetView()

@@ -6,8 +6,8 @@
 import type {
   InsightResult,
   InterviewRecord,
-  InterviewResult,
   NamedEntity,
+  ParsedInterview,
   PanoramaResult,
   QuickSearchResult,
   RelationLink,
@@ -224,8 +224,8 @@ function parseIndividualReasons(reasonText: string): Record<string, string> {
   return reasons
 }
 
-export function parseInterview(text: string): InterviewResult {
-  const result: InterviewResult = {
+export function parseInterview(text: string): ParsedInterview {
+  const result: ParsedInterview = {
     topic: '',
     successCount: 0,
     totalCount: 0,

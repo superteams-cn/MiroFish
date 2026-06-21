@@ -103,7 +103,8 @@ export interface RunStatusDetailData {
   all_actions?: ActionItem[]
 }
 
-export interface InterviewResult {
+/** 批量采访的 API 信封返回（与解析型 ParsedInterview 区分）。 */
+export interface InterviewBatchResult {
   result?: Record<string, { response?: string; answer?: string }>
   results?: Record<string, { response?: string; answer?: string }>
   [k: string]: unknown

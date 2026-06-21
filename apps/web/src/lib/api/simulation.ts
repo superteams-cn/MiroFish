@@ -4,7 +4,7 @@ import type {
   ApiEnvelope,
   ConfigRealtimeData,
   HistoryProject,
-  InterviewResult,
+  InterviewBatchResult,
   PrepareResult,
   PrepareStatusData,
   ProfilesRealtimeData,
@@ -150,9 +150,9 @@ export const ensureEnv = (
 /** 批量采访 Agent。 */
 export const interviewAgents = (
   data: Record<string, unknown>,
-): Promise<ApiEnvelope<InterviewResult>> =>
+): Promise<ApiEnvelope<InterviewBatchResult>> =>
   requestWithRetry(
-    () => http.post<InterviewResult>('/api/simulation/interview/batch', data),
+    () => http.post<InterviewBatchResult>('/api/simulation/interview/batch', data),
     3,
     1000,
   )

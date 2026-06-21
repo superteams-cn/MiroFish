@@ -8,6 +8,8 @@ import {
   getSimulationProfilesRealtime,
   getSimulationConfigRealtime,
 } from '@/lib/api/simulation'
+import { usePolling } from '@/hooks/usePolling'
+import { useDedupedLog } from '@/hooks/useDedupedLog'
 import type { Profile, SimulationConfig } from '@/lib/step2-types'
 import type { WorkflowStatus } from '@/components/WorkflowLayout'
 
@@ -34,31 +36,27 @@ export function useStep2Orchestration({ simulationId, addLog, onUpdateStatus }: 
   const [expectedTotal, setExpectedTotal] = useState<number | null>(null)
   const [simulationConfig, setSimulationConfig] = useState<SimulationConfig | null>(null)
 
-  // 计时器与可变引用
-  const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null)
-  const profilesTimer = useRef<ReturnType<typeof setInterval> | null>(null)
-  const configTimer = useRef<ReturnType<typeof setInterval> | null>(null)
+  // 三路轮询回调存 ref，供 usePolling 取最新实现（打破定义顺序的循环依赖）
+  const pollPrepareRef = useRef<() => void | Promise<void>>(() => {})
+  const fetchProfilesRef = useRef<() => void | Promise<void>>(() => {})
+  const fetchConfigRef = useRef<() => void | Promise<void>>(() => {})
   const taskIdRef = useRef<string | null>(null)
   const profilesRef = useRef<Profile[]>([])
   const expectedRef = useRef<number | null>(null)
   const initedRef = useRef(false)
-  // 日志去重
-  const lastMsg = useRef('')
-  const lastProfileCount = useRef(0)
-  const lastConfigStage = useRef('')
+  // 日志去重（替代手写 lastMsg/lastProfileCount/lastConfigStage 的「记上次值再比较」）
+  const msgDedup = useDedupedLog<string>('')
+  const profileCountDedup = useDedupedLog<number>(0)
+  const configStageDedup = useDedupedLog<string>('')
 
-  const stopPolling = useCallback(() => {
-    if (pollTimer.current) clearInterval(pollTimer.current)
-    pollTimer.current = null
-  }, [])
-  const stopProfilesPolling = useCallback(() => {
-    if (profilesTimer.current) clearInterval(profilesTimer.current)
-    profilesTimer.current = null
-  }, [])
-  const stopConfigPolling = useCallback(() => {
-    if (configTimer.current) clearInterval(configTimer.current)
-    configTimer.current = null
-  }, [])
+  // 三路轮询：准备状态 @2000、人设 @3000、配置 @2000
+  const preparePoll = usePolling(() => pollPrepareRef.current(), 2000)
+  const profilesPoll = usePolling(() => fetchProfilesRef.current(), 3000)
+  const configPoll = usePolling(() => fetchConfigRef.current(), 2000)
+
+  const stopPolling = useCallback(() => preparePoll.stop(), [preparePoll])
+  const stopProfilesPolling = useCallback(() => profilesPoll.stop(), [profilesPoll])
+  const stopConfigPolling = useCallback(() => configPoll.stop(), [configPoll])
 
   const fetchProfilesRealtime = useCallback(async () => {
     if (!simulationId) return
@@ -73,8 +71,7 @@ export function useStep2Orchestration({ simulationId, addLog, onUpdateStatus }: 
           setExpectedTotal(res.data.total_expected)
         }
         const count = list.length
-        if (count > 0 && count !== lastProfileCount.current) {
-          lastProfileCount.current = count
+        if (count > 0 && profileCountDedup.isNew(count)) {
           const total = expectedRef.current || '?'
           const latest = list[count - 1]
           const name = latest?.name || latest?.username || `Agent_${count}`
@@ -95,7 +92,7 @@ export function useStep2Orchestration({ simulationId, addLog, onUpdateStatus }: 
     } catch (err) {
       console.warn('获取 Profiles 失败:', err)
     }
-  }, [addLog, simulationId, t])
+  }, [addLog, profileCountDedup, simulationId, t])
 
   const fetchConfigRealtime = useCallback(async () => {
     if (!simulationId) return
@@ -103,8 +100,7 @@ export function useStep2Orchestration({ simulationId, addLog, onUpdateStatus }: 
       const res = await getSimulationConfigRealtime(simulationId)
       if (!res.success || !res.data) return
       const data = res.data
-      if (data.generation_stage && data.generation_stage !== lastConfigStage.current) {
-        lastConfigStage.current = data.generation_stage
+      if (data.generation_stage && configStageDedup.isNew(data.generation_stage)) {
         if (data.generation_stage === 'generating_profiles')
           addLog(t('log.generatingAgentProfileConfig'))
         else if (data.generation_stage === 'generating_config') addLog(t('log.generatingLLMConfig'))
@@ -132,13 +128,14 @@ export function useStep2Orchestration({ simulationId, addLog, onUpdateStatus }: 
     } catch (err) {
       console.warn('获取 Config 失败:', err)
     }
-  }, [addLog, onUpdateStatus, simulationId, stopConfigPolling, t])
+  }, [addLog, configStageDedup, onUpdateStatus, simulationId, stopConfigPolling, t])
 
   const startConfigPolling = useCallback(() => {
-    if (configTimer.current) return
+    // 已在轮询则不重复启动、不重复打日志（等价原 `if (configTimer.current) return`）
+    if (configPoll.isActive()) return
     addLog(t('log.startGeneratingConfig'))
-    configTimer.current = setInterval(fetchConfigRealtime, 2000)
-  }, [addLog, fetchConfigRealtime, t])
+    configPoll.start()
+  }, [addLog, configPoll, t])
 
   const loadPreparedData = useCallback(async () => {
     setPhase(2)
@@ -185,8 +182,7 @@ export function useStep2Orchestration({ simulationId, addLog, onUpdateStatus }: 
         const detail = data.progress_detail
         setCurrentStage(detail.current_stage_name || '')
         const logKey = `${detail.current_stage}-${detail.current_item}-${detail.total_items}`
-        if (logKey !== lastMsg.current && detail.item_description) {
-          lastMsg.current = logKey
+        if (detail.item_description && msgDedup.isNew(logKey)) {
           const stageInfo = `[${detail.stage_index}/${detail.total_stages}]`
           addLog(
             (detail.total_items ?? 0) > 0
@@ -197,8 +193,7 @@ export function useStep2Orchestration({ simulationId, addLog, onUpdateStatus }: 
       } else if (data.message) {
         const match = data.message.match(/\[(\d+)\/(\d+)\]\s*([^:]+)/)
         if (match) setCurrentStage(match[3].trim())
-        if (data.message !== lastMsg.current) {
-          lastMsg.current = data.message
+        if (msgDedup.isNew(data.message)) {
           addLog(data.message)
         }
       }
@@ -216,7 +211,12 @@ export function useStep2Orchestration({ simulationId, addLog, onUpdateStatus }: 
     } catch (err) {
       console.warn('轮询状态失败:', err)
     }
-  }, [addLog, loadPreparedData, simulationId, stopPolling, stopProfilesPolling, t])
+  }, [addLog, loadPreparedData, msgDedup, simulationId, stopPolling, stopProfilesPolling, t])
+
+  // 让 usePolling 的稳定回调始终指向最新的 fetch 实现
+  pollPrepareRef.current = pollPrepareStatus
+  fetchProfilesRef.current = fetchProfilesRealtime
+  fetchConfigRef.current = fetchConfigRealtime
 
   const startPrepare = useCallback(
     async (force = false) => {
@@ -255,8 +255,8 @@ export function useStep2Orchestration({ simulationId, addLog, onUpdateStatus }: 
             }
           }
           addLog(t('log.startPollingProgress'))
-          pollTimer.current = setInterval(pollPrepareStatus, 2000)
-          profilesTimer.current = setInterval(fetchProfilesRealtime, 3000)
+          preparePoll.start()
+          profilesPoll.start()
         } else {
           addLog(t('log.prepareFailed', { error: res.error || t('common.unknownError') }))
           onUpdateStatus('error')
@@ -266,15 +266,7 @@ export function useStep2Orchestration({ simulationId, addLog, onUpdateStatus }: 
         onUpdateStatus('error')
       }
     },
-    [
-      addLog,
-      fetchProfilesRealtime,
-      loadPreparedData,
-      onUpdateStatus,
-      pollPrepareStatus,
-      simulationId,
-      t,
-    ],
+    [addLog, loadPreparedData, onUpdateStatus, preparePoll, profilesPoll, simulationId, t],
   )
 
   // 阶段切换：进入配置生成阶段时启动配置轮询
@@ -318,8 +310,8 @@ export function useStep2Orchestration({ simulationId, addLog, onUpdateStatus }: 
         setExpectedTotal(state.entities_count)
       }
       await fetchProfilesRealtime()
-      pollTimer.current = setInterval(pollPrepareStatus, 2000)
-      profilesTimer.current = setInterval(fetchProfilesRealtime, 3000)
+      preparePoll.start()
+      profilesPoll.start()
       return
     }
 
@@ -330,7 +322,8 @@ export function useStep2Orchestration({ simulationId, addLog, onUpdateStatus }: 
     fetchProfilesRealtime,
     loadPreparedData,
     onUpdateStatus,
-    pollPrepareStatus,
+    preparePoll,
+    profilesPoll,
     simulationId,
     startPrepare,
     t,

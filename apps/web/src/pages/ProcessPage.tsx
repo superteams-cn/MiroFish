@@ -11,6 +11,8 @@ import {
   getTaskStatus,
   getGraphData,
 } from '@/lib/api/graph'
+import { usePolling } from '@/hooks/usePolling'
+import { useDedupedLog } from '@/hooks/useDedupedLog'
 import { getPendingUpload, clearPendingUpload } from '@/stores/pendingUpload'
 import type {
   BuildProgress,
@@ -40,12 +42,20 @@ export default function ProcessPage() {
 
   // —— 可变引用（用于轮询闭包）——
   const projectIdRef = useRef<string>(projectId ?? '')
-  const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null)
-  const graphPollTimer = useRef<ReturnType<typeof setInterval> | null>(null)
+  // 任务轮询当前的 taskId（usePolling 回调无参，经 ref 读取）
+  const pollingTaskIdRef = useRef<string | null>(null)
+  // 两路轮询回调存 ref，供 usePolling 取最新实现
+  const pollTaskRef = useRef<() => void | Promise<void>>(() => {})
+  const fetchGraphRef = useRef<() => void | Promise<void>>(() => {})
   const initedRef = useRef(false)
-  const buildMsgRef = useRef<string | undefined>(undefined)
+  // 构建消息日志去重（替代手写 buildMsgRef 比较）
+  const buildMsgDedup = useDedupedLog<string | undefined>(undefined)
   // 上次图谱数据签名（节点:边），用于跳过无变化的刷新，避免无谓重渲染
   const lastGraphSigRef = useRef<string>('')
+
+  // 两路轮询：任务状态 @2000、图谱数据 @4000；均在 start 时立即拉一次
+  const taskPoll = usePolling(() => pollTaskRef.current(), 2000)
+  const graphPoll = usePolling(() => fetchGraphRef.current(), 4000, { immediate: true })
   // 通过 ref 引用 startBuildGraph，打破 handleMissingTask ↔ startBuildGraph 的循环依赖
   const startBuildGraphRef = useRef<((force?: boolean) => Promise<void>) | null>(null)
 
@@ -67,19 +77,16 @@ export default function ProcessPage() {
   }, [])
 
   const stopPolling = useCallback(() => {
-    if (pollTimer.current) {
-      clearInterval(pollTimer.current)
-      pollTimer.current = null
-    }
-  }, [])
+    taskPoll.stop()
+  }, [taskPoll])
 
   const stopGraphPolling = useCallback(() => {
-    if (graphPollTimer.current) {
-      clearInterval(graphPollTimer.current)
-      graphPollTimer.current = null
+    // 仅在确有在跑时打「已停止」日志（等价原 `if (graphPollTimer.current)` 守卫）
+    if (graphPoll.isActive()) {
+      graphPoll.stop()
       addLog(t('log.graphPollingStopped'))
     }
-  }, [addLog, t])
+  }, [addLog, graphPoll, t])
 
   const loadGraph = useCallback(
     async (graphId: string) => {
@@ -126,9 +133,8 @@ export default function ProcessPage() {
 
   const startGraphPolling = useCallback(() => {
     addLog(t('log.graphPollingStarted'))
-    void fetchGraphData()
-    graphPollTimer.current = setInterval(fetchGraphData, 4000)
-  }, [addLog, fetchGraphData, t])
+    graphPoll.start() // immediate: true → 立即拉一次后按 4000 轮询
+  }, [addLog, graphPoll, t])
 
   const handleMissingTask = useCallback(
     async (taskId: string) => {
@@ -167,10 +173,11 @@ export default function ProcessPage() {
         const res = await getTaskStatus(taskId)
         if (res.success) {
           const task = res.data
-          if (task.message && task.message !== buildMsgRef.current) {
+          // isNew 无条件调用以更新「上次值」（含 undefined），等价原先的无条件赋值；仅在有内容时打日志
+          const msgIsNew = buildMsgDedup.isNew(task.message)
+          if (task.message && msgIsNew) {
             addLog(task.message)
           }
-          buildMsgRef.current = task.message
           setBuildProgress({ progress: task.progress || 0, message: task.message })
 
           if (task.status === 'completed') {
@@ -198,16 +205,24 @@ export default function ProcessPage() {
         }
       }
     },
-    [addLog, handleMissingTask, loadGraph, stopGraphPolling, stopPolling, t],
+    [addLog, buildMsgDedup, handleMissingTask, loadGraph, stopGraphPolling, stopPolling, t],
   )
 
   const startPollingTask = useCallback(
     (taskId: string) => {
-      void pollTaskStatus(taskId)
-      pollTimer.current = setInterval(() => pollTaskStatus(taskId), 2000)
+      pollingTaskIdRef.current = taskId
+      void pollTaskStatus(taskId) // 立即拉一次（保留原行为）
+      taskPoll.start()
     },
-    [pollTaskStatus],
+    [pollTaskStatus, taskPoll],
   )
+
+  // 让 usePolling 的稳定回调始终指向最新实现；任务轮询从 ref 读当前 taskId
+  fetchGraphRef.current = fetchGraphData
+  pollTaskRef.current = () => {
+    const id = pollingTaskIdRef.current
+    if (id) void pollTaskStatus(id)
+  }
 
   const startBuildGraph = useCallback(
     async (force = false) => {

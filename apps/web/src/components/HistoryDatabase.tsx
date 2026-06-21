@@ -10,39 +10,9 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Badge } from '@/components/ui/badge'
 import { getSimulationHistory } from '@/lib/api/simulation'
 import { deleteProject } from '@/lib/api/graph'
+import type { HistoryProject } from '@/lib/api/types'
 import { recordStage, stageUrl, type JourneyState } from '@/lib/journey'
-import { cn } from '@/lib/utils'
-
-interface HistoryProject {
-  simulation_id?: string
-  project_id?: string
-  report_id?: string
-  simulation_requirement?: string
-  files?: { filename: string }[]
-  created_at?: string
-  current_round?: number
-  total_rounds?: number
-}
-
-function fileExt(name?: string) {
-  return name?.split('.').pop()?.toUpperCase() || 'FILE'
-}
-function truncate(text: string | undefined, max: number) {
-  if (!text) return ''
-  return text.length > max ? text.slice(0, max) + '...' : text
-}
-function formatDateTime(s?: string) {
-  if (!s) return ''
-  try {
-    const d = new Date(s)
-    return `${d.toISOString().slice(0, 10)} ${d.getHours().toString().padStart(2, '0')}:${d
-      .getMinutes()
-      .toString()
-      .padStart(2, '0')}`
-  } catch {
-    return ''
-  }
-}
+import { cn, fileExt, formatDateTime, truncate } from '@/lib/utils'
 
 interface HistoryDatabaseProps {
   /** 历史项目加载完成后回调（用于首页决定是否显示"滚动到历史"按钮）。 */

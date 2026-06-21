@@ -50,6 +50,27 @@ export function useInteraction({ reportId, simulationId, addLog }: Options) {
   const [wakingEnv, setWakingEnv] = useState(false)
 
   const initedRef = useRef(false)
+  const mountedRef = useRef(true)
+  // 流式采访/群访的取消控制：重新发起前 abort 上一个，组件卸载时 abort 在途的流
+  const streamAbortRef = useRef<AbortController | null>(null)
+
+  // 发起新流前调用：取消上一个在途流并返回新 controller 的 signal
+  const beginStream = useCallback((): AbortSignal => {
+    streamAbortRef.current?.abort()
+    const controller = new AbortController()
+    streamAbortRef.current = controller
+    return controller.signal
+  }, [])
+
+  // 卸载时取消在途流，避免回调在卸载后继续 setState
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      streamAbortRef.current?.abort()
+      streamAbortRef.current = null
+    }
+  }, [])
 
   // 确保环境就绪：已活直接 true；否则触发唤醒并轮询至 alive（最多 ~90s）
   const ensureEnvReady = useCallback(async (): Promise<boolean> => {
@@ -203,22 +224,28 @@ export function useInteraction({ reportId, simulationId, addLog }: Options) {
           })
         let acc = ''
         const errBox: { msg: string | null } = { msg: null }
+        // 取消上一个在途流并取得本次 signal；abort 后不再 setState
+        const signal = beginStream()
         await streamInterview(
           { simulation_id: simulationId, agent_id: idx, prompt },
           {
             onChunk: (delta) => {
+              if (signal.aborted) return
               acc += delta
               setLastAssistant(acc)
             },
             onDone: (fullText) => {
+              if (signal.aborted) return
               acc = fullText || acc
               setLastAssistant(acc || t('step5.noResponse'))
             },
             onError: (e) => {
               errBox.msg = e
             },
+            signal,
           },
         )
+        if (signal.aborted) return
         if (errBox.msg) {
           addLog(t('log.sendFailed', { error: errBox.msg }))
           // 唤醒失败/环境已回收 → 人话兜底引导改问 SuperFish
@@ -247,7 +274,7 @@ export function useInteraction({ reportId, simulationId, addLog }: Options) {
         timestamp: new Date().toISOString(),
       })
     } finally {
-      setIsSending(false)
+      if (mountedRef.current) setIsSending(false)
     }
   }
 
@@ -277,11 +304,15 @@ export function useInteraction({ reportId, simulationId, addLog }: Options) {
       })
       setSurveyResults(placeholders)
 
+      // 取消上一个在途流并取得本次 signal；abort 后不再 setState
+      const signal = beginStream()
       const acc: Record<number, string> = {}
-      const setAnswer = (agentId: number, content: string) =>
+      const setAnswer = (agentId: number, content: string) => {
+        if (signal.aborted) return
         setSurveyResults((prev) =>
           prev.map((r) => (r.agent_id === agentId ? { ...r, answer: content } : r)),
         )
+      }
       const errBox: { msg: string | null } = { msg: null }
       await streamInterviewBatch(
         { simulation_id: simulationId, interviews },
@@ -299,13 +330,15 @@ export function useInteraction({ reportId, simulationId, addLog }: Options) {
           onError: (e) => {
             errBox.msg = e
           },
+          signal,
         },
       )
+      if (signal.aborted) return
       if (errBox.msg) addLog(t('log.surveySendFailed', { error: errBox.msg }))
     } catch (err) {
       addLog(t('log.surveySendFailed', { error: (err as Error).message }))
     } finally {
-      setIsSurveying(false)
+      if (mountedRef.current) setIsSurveying(false)
     }
   }
 

@@ -80,7 +80,7 @@ export interface InterviewRecord {
 }
 
 /** interview_agents（Agent 采访）解析结果 */
-export interface InterviewResult {
+export interface ParsedInterview {
   topic: string
   successCount: number
   totalCount: number

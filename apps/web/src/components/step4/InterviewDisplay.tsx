@@ -4,7 +4,7 @@ import { Globe, MessageCircle } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import type { InterviewRecord, InterviewResult } from '@/lib/step4-types'
+import type { InterviewRecord, ParsedInterview } from '@/lib/step4-types'
 import { ToolResultShell } from './tool-display-shared'
 
 const PLACEHOLDERS = new Set(['（该平台未获得回复）', '(该平台未获得回复)', '[无回复]'])
@@ -81,7 +81,7 @@ export function InterviewDisplay({
   result,
   resultLength,
 }: {
-  result: InterviewResult
+  result: ParsedInterview
   resultLength?: number
 }) {
   const { t } = useTranslation()

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { startSimulation, getRunStatus, getRunStatusDetail } from '@/lib/api/simulation'
+import { usePolling } from '@/hooks/usePolling'
 import type { ActionItem, RunStatus } from '@/lib/step3-types'
 import type { WorkflowStatus } from '@/components/WorkflowLayout'
 
@@ -32,8 +33,9 @@ export function useSimulationRun({
   const [runStatus, setRunStatus] = useState<RunStatus>({})
   const [actions, setActions] = useState<ActionItem[]>([])
 
-  const statusTimer = useRef<ReturnType<typeof setInterval> | null>(null)
-  const detailTimer = useRef<ReturnType<typeof setInterval> | null>(null)
+  // 两路轮询的实际回调存入 ref，供 usePolling 调用最新实现（打破定义顺序的循环依赖）
+  const fetchRunStatusRef = useRef<() => void | Promise<void>>(() => {})
+  const fetchRunStatusDetailRef = useRef<() => void | Promise<void>>(() => {})
   const actionIds = useRef<Set<string>>(new Set())
   const prevTwitter = useRef(0)
   const prevReddit = useRef(0)
@@ -55,19 +57,19 @@ export function useSimulationRun({
   )
   const feedActions = useMemo(() => meaningfulActions.slice(-80).reverse(), [meaningfulActions])
 
+  // 两路轮询：状态 @2000、详情 @3000。回调通过 ref 取最新实现。
+  const statusPoll = usePolling(() => fetchRunStatusRef.current(), 2000)
+  const detailPoll = usePolling(() => fetchRunStatusDetailRef.current(), 3000)
+
   const stopPolling = useCallback(() => {
-    if (statusTimer.current) clearInterval(statusTimer.current)
-    if (detailTimer.current) clearInterval(detailTimer.current)
-    statusTimer.current = null
-    detailTimer.current = null
-  }, [])
+    statusPoll.stop()
+    detailPoll.stop()
+  }, [statusPoll, detailPoll])
 
   const startPolling = useCallback(() => {
-    stopPolling()
-    statusTimer.current = setInterval(fetchRunStatus, 2000)
-    detailTimer.current = setInterval(fetchRunStatusDetail, 3000)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stopPolling])
+    statusPoll.start()
+    detailPoll.start()
+  }, [statusPoll, detailPoll])
 
   const checkPlatformsCompleted = (data: RunStatus) => {
     if (!data) return false
@@ -137,6 +139,10 @@ export function useSimulationRun({
       console.warn('获取详细状态失败:', err)
     }
   }, [simulationId])
+
+  // 让 usePolling 的稳定回调始终指向最新的 fetch 实现
+  fetchRunStatusRef.current = fetchRunStatus
+  fetchRunStatusDetailRef.current = fetchRunStatusDetail
 
   const doStart = useCallback(async () => {
     if (!simulationId) {
