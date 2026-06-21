@@ -192,16 +192,27 @@ def run_report_generate(
             message=t("api.initReportAgent"),
         )
 
-        agent = ReportAgent(
-            graph_id=graph_id,
-            simulation_id=simulation_id,
-            simulation_requirement=simulation_requirement,
-        )
-
         def progress_callback(stage, progress, message):
             task_manager.update_task(task_id, progress=progress, message=f"[{stage}] {message}")
 
-        report = agent.generate_report(progress_callback=progress_callback, report_id=report_id)
+        # 剧本推演：用叙事报告生成器（数据源为 beats，而非 OASIS 社媒动作）
+        from .services.narrative.runner import is_narrative
+        from .services.simulation_manager import SimulationManager
+
+        sim_dir = SimulationManager()._get_simulation_dir(simulation_id)
+        if is_narrative(sim_dir):
+            from .services.narrative.report import NarrativeReportGenerator
+
+            report = NarrativeReportGenerator(sim_dir).generate(
+                report_id=report_id, progress_callback=progress_callback
+            )
+        else:
+            agent = ReportAgent(
+                graph_id=graph_id,
+                simulation_id=simulation_id,
+                simulation_requirement=simulation_requirement,
+            )
+            report = agent.generate_report(progress_callback=progress_callback, report_id=report_id)
         # worker 无请求上下文：从所属模拟继承数据归属，确保报告带上 user_id
         try:
             from .services.simulation_manager import SimulationManager
