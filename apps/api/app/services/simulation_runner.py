@@ -12,212 +12,35 @@ import subprocess
 import sys
 import threading
 import time
-from dataclasses import dataclass, field
 from datetime import datetime
-from enum import StrEnum
 from queue import Queue
 from typing import Any
 
-from ..core.db import session_scope
+from ..core.db import session_scope  # 仅监控所有权 CAS（with_for_update 行锁）仍直用
 from ..core.logger import get_logger
-from ..db_models import SimulationRunStateRow
+from ..db_models import SimulationRunStateRow  # 同上：所有权 CAS 直接锁行
+from ..domain.run_state import AgentAction, RoundSummary, RunnerStatus, SimulationRunState
+from ..repositories.run_state_repo import RunStateRepository
 from ..utils.locale import get_locale, set_locale
 from .neo4j_graph_memory_updater import Neo4jGraphMemoryManager
 from .simulation_ipc import SimulationIPCClient
 
 logger = get_logger("superfish.simulation_runner")
 
+# re-export 运行态领域类型，保持 `from ..services.simulation_runner import ...` 导入面
+__all__ = [
+    "SimulationRunner",
+    "SimulationRunState",
+    "RunnerStatus",
+    "AgentAction",
+    "RoundSummary",
+]
+
 # 标记是否已注册清理函数
 _cleanup_registered = False
 
 # 平台检测
 IS_WINDOWS = sys.platform == "win32"
-
-
-class RunnerStatus(StrEnum):
-    """运行器状态"""
-
-    IDLE = "idle"
-    STARTING = "starting"
-    RUNNING = "running"
-    PAUSED = "paused"
-    STOPPING = "stopping"
-    STOPPED = "stopped"
-    COMPLETED = "completed"
-    FAILED = "failed"
-    INTERRUPTED = "interrupted"  # 进程被外部杀死/崩溃且未跑到 simulation_end（可重新启动）
-
-
-@dataclass
-class AgentAction:
-    """Agent动作记录"""
-
-    round_num: int
-    timestamp: str
-    platform: str  # twitter / reddit
-    agent_id: int
-    agent_name: str
-    action_type: str  # CREATE_POST, LIKE_POST, etc.
-    action_args: dict[str, Any] = field(default_factory=dict)
-    result: str | None = None
-    success: bool = True
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "round_num": self.round_num,
-            "timestamp": self.timestamp,
-            "platform": self.platform,
-            "agent_id": self.agent_id,
-            "agent_name": self.agent_name,
-            "action_type": self.action_type,
-            "action_args": self.action_args,
-            "result": self.result,
-            "success": self.success,
-        }
-
-
-@dataclass
-class RoundSummary:
-    """每轮摘要"""
-
-    round_num: int
-    start_time: str
-    end_time: str | None = None
-    simulated_hour: int = 0
-    twitter_actions: int = 0
-    reddit_actions: int = 0
-    active_agents: list[int] = field(default_factory=list)
-    actions: list[AgentAction] = field(default_factory=list)
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "round_num": self.round_num,
-            "start_time": self.start_time,
-            "end_time": self.end_time,
-            "simulated_hour": self.simulated_hour,
-            "twitter_actions": self.twitter_actions,
-            "reddit_actions": self.reddit_actions,
-            "active_agents": self.active_agents,
-            "actions_count": len(self.actions),
-            "actions": [a.to_dict() for a in self.actions],
-        }
-
-
-@dataclass
-class SimulationRunState:
-    """模拟运行状态（实时）"""
-
-    simulation_id: str
-    runner_status: RunnerStatus = RunnerStatus.IDLE
-
-    # 进度信息
-    current_round: int = 0
-    total_rounds: int = 0
-    simulated_hours: int = 0
-    total_simulation_hours: int = 0
-
-    # 各平台独立轮次和模拟时间（用于双平台并行显示）
-    twitter_current_round: int = 0
-    reddit_current_round: int = 0
-    twitter_simulated_hours: int = 0
-    reddit_simulated_hours: int = 0
-
-    # 平台状态
-    twitter_running: bool = False
-    reddit_running: bool = False
-    twitter_actions_count: int = 0
-    reddit_actions_count: int = 0
-
-    # 平台完成状态（通过检测 actions.jsonl 中的 simulation_end 事件）
-    twitter_completed: bool = False
-    reddit_completed: bool = False
-
-    # 每轮摘要
-    rounds: list[RoundSummary] = field(default_factory=list)
-
-    # 最近动作（用于前端实时展示）
-    recent_actions: list[AgentAction] = field(default_factory=list)
-    max_recent_actions: int = 50
-
-    # 时间戳
-    started_at: str | None = None
-    updated_at: str = field(default_factory=lambda: datetime.now().isoformat())
-    completed_at: str | None = None
-
-    # 错误信息
-    error: str | None = None
-
-    # 进程ID（用于停止）
-    process_pid: int | None = None
-
-    # ===== 无状态可恢复（档位 A）相关字段 =====
-    # 进程近似绝对启动时刻（epoch 秒），用于 PID 探活时防 PID 复用误判
-    process_start_time: float | None = None
-    # 动作日志已读字节偏移（持久化，接管时从断点续读，避免重复推送图谱记忆）
-    twitter_log_offset: int = 0
-    reddit_log_offset: int = 0
-    # 监控所有权：哪个进程实例在监控本模拟 + 心跳时间（防多进程重复监控）
-    owner_id: str | None = None
-    owner_heartbeat: float | None = None
-    # 图谱记忆配置（持久化，便于其他进程接管时重建 updater）
-    graph_id: str | None = None
-    graph_memory_enabled: bool = False
-
-    def add_action(self, action: AgentAction):
-        """添加动作到最近动作列表"""
-        self.recent_actions.insert(0, action)
-        if len(self.recent_actions) > self.max_recent_actions:
-            self.recent_actions = self.recent_actions[: self.max_recent_actions]
-
-        if action.platform == "twitter":
-            self.twitter_actions_count += 1
-        else:
-            self.reddit_actions_count += 1
-
-        self.updated_at = datetime.now().isoformat()
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "simulation_id": self.simulation_id,
-            "runner_status": self.runner_status.value,
-            "current_round": self.current_round,
-            "total_rounds": self.total_rounds,
-            "simulated_hours": self.simulated_hours,
-            "total_simulation_hours": self.total_simulation_hours,
-            "progress_percent": round(self.current_round / max(self.total_rounds, 1) * 100, 1),
-            # 各平台独立轮次和时间
-            "twitter_current_round": self.twitter_current_round,
-            "reddit_current_round": self.reddit_current_round,
-            "twitter_simulated_hours": self.twitter_simulated_hours,
-            "reddit_simulated_hours": self.reddit_simulated_hours,
-            "twitter_running": self.twitter_running,
-            "reddit_running": self.reddit_running,
-            "twitter_completed": self.twitter_completed,
-            "reddit_completed": self.reddit_completed,
-            "twitter_actions_count": self.twitter_actions_count,
-            "reddit_actions_count": self.reddit_actions_count,
-            "total_actions_count": self.twitter_actions_count + self.reddit_actions_count,
-            "started_at": self.started_at,
-            "updated_at": self.updated_at,
-            "completed_at": self.completed_at,
-            "error": self.error,
-            "process_pid": self.process_pid,
-            # 无状态可恢复字段
-            "process_start_time": self.process_start_time,
-            "twitter_log_offset": self.twitter_log_offset,
-            "reddit_log_offset": self.reddit_log_offset,
-            "owner_id": self.owner_id,
-            "owner_heartbeat": self.owner_heartbeat,
-            "graph_id": self.graph_id,
-            "graph_memory_enabled": self.graph_memory_enabled,
-        }
-
-    def to_detail_dict(self) -> dict[str, Any]:
-        """包含最近动作的详细信息"""
-        result = self.to_dict()
-        result["recent_actions"] = [a.to_dict() for a in self.recent_actions]
-        result["rounds_count"] = len(self.rounds)
-        return result
 
 
 class SimulationRunner:
@@ -453,10 +276,8 @@ class SimulationRunner:
 
     @classmethod
     def _load_run_state(cls, simulation_id: str) -> SimulationRunState | None:
-        """从 Postgres 加载运行状态快照。"""
-        with session_scope() as session:
-            row = session.get(SimulationRunStateRow, simulation_id)
-            data = dict(row.data) if row else None
+        """从 Postgres 加载运行状态快照（委托 RunStateRepository）。"""
+        data = RunStateRepository.load_raw(simulation_id)
         if not data:
             return None
         return cls._state_from_data(simulation_id, data)
@@ -480,13 +301,7 @@ class SimulationRunner:
                 to_load.append(sid)
 
         if to_load:
-            with session_scope() as session:
-                rows = (
-                    session.query(SimulationRunStateRow)
-                    .filter(SimulationRunStateRow.simulation_id.in_(to_load))
-                    .all()
-                )
-                raw = {r.simulation_id: dict(r.data) for r in rows if r.data}
+            raw = RunStateRepository.load_raw_bulk(to_load)
             for sid, data in raw.items():
                 state = cls._state_from_data(sid, data)
                 if state is None:
@@ -499,74 +314,17 @@ class SimulationRunner:
 
     @classmethod
     def _state_from_data(cls, simulation_id: str, data: dict) -> SimulationRunState | None:
-        """从持久化 data dict 重建 SimulationRunState（_load_run_state 与批量加载共用）。"""
+        """从持久化 data dict 重建 SimulationRunState（委托领域类 from_data）。"""
         try:
-            state = SimulationRunState(
-                simulation_id=simulation_id,
-                runner_status=RunnerStatus(data.get("runner_status", "idle")),
-                current_round=data.get("current_round", 0),
-                total_rounds=data.get("total_rounds", 0),
-                simulated_hours=data.get("simulated_hours", 0),
-                total_simulation_hours=data.get("total_simulation_hours", 0),
-                # 各平台独立轮次和时间
-                twitter_current_round=data.get("twitter_current_round", 0),
-                reddit_current_round=data.get("reddit_current_round", 0),
-                twitter_simulated_hours=data.get("twitter_simulated_hours", 0),
-                reddit_simulated_hours=data.get("reddit_simulated_hours", 0),
-                twitter_running=data.get("twitter_running", False),
-                reddit_running=data.get("reddit_running", False),
-                twitter_completed=data.get("twitter_completed", False),
-                reddit_completed=data.get("reddit_completed", False),
-                twitter_actions_count=data.get("twitter_actions_count", 0),
-                reddit_actions_count=data.get("reddit_actions_count", 0),
-                started_at=data.get("started_at"),
-                updated_at=data.get("updated_at", datetime.now().isoformat()),
-                completed_at=data.get("completed_at"),
-                error=data.get("error"),
-                process_pid=data.get("process_pid"),
-                process_start_time=data.get("process_start_time"),
-                twitter_log_offset=data.get("twitter_log_offset", 0),
-                reddit_log_offset=data.get("reddit_log_offset", 0),
-                owner_id=data.get("owner_id"),
-                owner_heartbeat=data.get("owner_heartbeat"),
-                graph_id=data.get("graph_id"),
-                graph_memory_enabled=data.get("graph_memory_enabled", False),
-            )
-
-            # 加载最近动作
-            actions_data = data.get("recent_actions", [])
-            for a in actions_data:
-                state.recent_actions.append(
-                    AgentAction(
-                        round_num=a.get("round_num", 0),
-                        timestamp=a.get("timestamp", ""),
-                        platform=a.get("platform", ""),
-                        agent_id=a.get("agent_id", 0),
-                        agent_name=a.get("agent_name", ""),
-                        action_type=a.get("action_type", ""),
-                        action_args=a.get("action_args", {}),
-                        result=a.get("result"),
-                        success=a.get("success", True),
-                    )
-                )
-
-            return state
+            return SimulationRunState.from_data(simulation_id, data)
         except Exception as e:
             logger.error(f"加载运行状态失败: {str(e)}")
             return None
 
     @classmethod
     def _save_run_state(cls, state: SimulationRunState):
-        """保存运行状态到 Postgres（upsert）并更新本进程实时对象缓存。"""
-        data = state.to_detail_dict()
-        with session_scope() as session:
-            row = session.get(SimulationRunStateRow, state.simulation_id)
-            if row is None:
-                row = SimulationRunStateRow(simulation_id=state.simulation_id)
-                session.add(row)
-            row.data = data
-            row.updated_at = datetime.now().isoformat()
-
+        """保存运行状态到 Postgres（upsert，委托 RunStateRepository）并更新本进程实时缓存。"""
+        RunStateRepository.save_raw(state.simulation_id, state.to_detail_dict())
         cls._run_states[state.simulation_id] = state
 
     @classmethod
@@ -1073,13 +831,11 @@ class SimulationRunner:
 
         adopted, finalized = [], []
         try:
-            with session_scope() as session:
-                rows = session.query(SimulationRunStateRow).all()
-                ids = [
-                    r.simulation_id
-                    for r in rows
-                    if (r.data or {}).get("runner_status") in ("running", "starting")
-                ]
+            ids = [
+                sid
+                for sid, data in RunStateRepository.load_all_raw().items()
+                if (data or {}).get("runner_status") in ("running", "starting")
+            ]
         except Exception as e:
             logger.error(f"对账运行中模拟失败（读取列表）: {e}")
             return {"adopted": [], "finalized": []}
@@ -1630,10 +1386,7 @@ class SimulationRunner:
 
         # 清理 Postgres 中的运行状态快照
         try:
-            with session_scope() as session:
-                row = session.get(SimulationRunStateRow, simulation_id)
-                if row is not None:
-                    session.delete(row)
+            RunStateRepository.delete(simulation_id)
         except Exception as e:
             errors.append(f"清理运行状态(PG)失败: {str(e)}")
 
@@ -1704,11 +1457,9 @@ class SimulationRunner:
         # 收集所有运行中的模拟：本进程内存中的 + PG 标记 running/starting 的
         ids = set(cls._processes.keys())
         try:
-            with session_scope() as session:
-                rows = session.query(SimulationRunStateRow).all()
-                for r in rows:
-                    if (r.data or {}).get("runner_status") in ("running", "starting"):
-                        ids.add(r.simulation_id)
+            for sid, data in RunStateRepository.load_all_raw().items():
+                if (data or {}).get("runner_status") in ("running", "starting"):
+                    ids.add(sid)
         except Exception as e:
             logger.error(f"读取运行中模拟列表失败: {e}")
 
