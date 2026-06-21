@@ -117,8 +117,7 @@ class Neo4jEntityReader:
                    r.expired_at AS expired_at
             """
 
-            with client.driver.session() as session:
-                records = list(session.run(cypher, {"uuid": node_uuid}))
+            records = client.read(cypher, {"uuid": node_uuid})
             return [
                 {
                     "uuid": r.get("uuid") or "",
@@ -247,8 +246,7 @@ class Neo4jEntityReader:
                    labels(n) AS labels, n.attributes_json AS attributes_json
             """
 
-            with client.driver.session() as session:
-                records = list(session.run(cypher, {"uuid": entity_uuid}))
+            records = client.read(cypher, {"uuid": entity_uuid})
             if not records:
                 return None
 

@@ -282,9 +282,8 @@ class Neo4jGraphMemoryUpdater:
                 activity_uuid = (
                     f"activity_{platform}_{datetime.now(UTC).strftime('%Y%m%d%H%M%S%f')}"
                 )
-                with self._client.driver.session() as session:
-                    session.run(
-                        """
+                self._client.write(
+                    """
                         MERGE (a:Entity:SimulationActivity {uuid: $uuid})
                         SET a.name = $name,
                             a.summary = $summary,
@@ -302,22 +301,22 @@ class Neo4jGraphMemoryUpdater:
                             r.attributes_json = '{}',
                             r.created_at = $created_at
                         """,
-                        {
-                            "uuid": activity_uuid,
-                            "name": f"{platform_label}模拟活动",
-                            "summary": combined_text,
-                            "group_id": self.graph_id,
-                            "attributes_json": json.dumps(
-                                {
-                                    "platform": platform,
-                                    "activity_count": len(activities),
-                                },
-                                ensure_ascii=False,
-                            ),
-                            "created_at": datetime.now(UTC).isoformat(),
-                            "agent_names": list({a.agent_name for a in activities if a.agent_name}),
-                        },
-                    )
+                    {
+                        "uuid": activity_uuid,
+                        "name": f"{platform_label}模拟活动",
+                        "summary": combined_text,
+                        "group_id": self.graph_id,
+                        "attributes_json": json.dumps(
+                            {
+                                "platform": platform,
+                                "activity_count": len(activities),
+                            },
+                            ensure_ascii=False,
+                        ),
+                        "created_at": datetime.now(UTC).isoformat(),
+                        "agent_names": list({a.agent_name for a in activities if a.agent_name}),
+                    },
+                )
                 self._total_sent += 1
                 self._total_items_sent += len(activities)
                 logger.info(

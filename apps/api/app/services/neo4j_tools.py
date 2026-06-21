@@ -611,8 +611,7 @@ class Neo4jToolsService:
                    labels(n) AS labels, n.attributes_json AS attributes_json
             """
 
-            with self._client.driver.session() as session:
-                records = list(session.run(cypher, {"uuid": node_uuid}))
+            records = self._client.read(cypher, {"uuid": node_uuid})
             if not records:
                 return None
             r = records[0]

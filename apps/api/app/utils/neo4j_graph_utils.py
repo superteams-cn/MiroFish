@@ -113,6 +113,20 @@ class Neo4jGraphClient:
     def close(self):
         self.driver.close()
 
+    def read(self, cypher: str, params: dict[str, Any] | None = None) -> list[Any]:
+        """执行只读 Cypher 并返回 Record 列表。
+
+        统一封装 ``with driver.session()`` 生命周期，使调用方（服务层）不再各自伸手
+        进 ``client.driver.session()`` 重复样板。
+        """
+        with self.driver.session() as session:
+            return list(session.run(cypher, params or {}))
+
+    def write(self, cypher: str, params: dict[str, Any] | None = None) -> None:
+        """执行写 Cypher（不返回结果集）。"""
+        with self.driver.session() as session:
+            session.run(cypher, params or {})
+
     async def search(
         self,
         query: str,
