@@ -635,6 +635,10 @@ class OasisProfileGenerator:
                     )
                 if not result.get("persona"):
                     result["persona"] = entity_summary or f"{entity_name}是一个{entity_type}。"
+                # 年龄兜底：LLM 常漏掉顶层 age（被超长 persona 挤掉或 JSON 截断），
+                # 缺失时按实体类型给合理值——个人随机 25-50，避免清一色被打成默认 30 岁；机构仍用固定 30
+                if not result.get("age"):
+                    result["age"] = random.randint(25, 50) if is_individual else _DEFAULT_AGE
                 return result
 
             except Exception as e:
@@ -657,6 +661,7 @@ class OasisProfileGenerator:
 
         bio_match = re.search(r'"bio"\s*:\s*"([^"]*)"', content)
         persona_match = re.search(r'"persona"\s*:\s*"([^"]*)', content)  # 可能被截断
+        age_match = re.search(r'"age"\s*:\s*(\d+)', content)  # JSON 截断时也尽量救回真实年龄
 
         bio = (
             bio_match.group(1)
@@ -670,7 +675,10 @@ class OasisProfileGenerator:
         )
         if bio_match or persona_match:
             logger.info("从损坏的JSON中提取了部分信息")
-        return {"bio": bio, "persona": persona}
+        salvaged: dict[str, Any] = {"bio": bio, "persona": persona}
+        if age_match:
+            salvaged["age"] = int(age_match.group(1))
+        return salvaged
 
     def _get_system_prompt(self, is_individual: bool) -> str:
         """获取系统提示词"""
@@ -700,10 +708,16 @@ class OasisProfileGenerator:
 上下文信息:
 {context_str}
 
-请生成JSON，包含以下字段:
+请生成JSON，包含以下字段（务必先输出 age/gender/mbti/country 等短字段，再输出超长的 persona，避免长文本截断时丢失关键字段）:
 
-1. bio: 社交媒体简介，200字
-2. persona: 详细人设描述（2000字的纯文本），需包含:
+1. age: 年龄数字（必须是整数，按实体信息合理推断，不要统一填30）
+2. gender: 性别，必须是英文: "male" 或 "female"
+3. mbti: MBTI类型（如INTJ、ENFP等）
+4. country: 国家/地区（按实体所属或场景上下文推断，语言与本回复一致；无法判断时留空字符串）
+5. profession: 职业
+6. bio: 社交媒体简介，200字
+7. interested_topics: 感兴趣话题数组
+8. persona: 详细人设描述（2000字的纯文本），需包含:
    - 基本信息（年龄、职业、教育背景、所在地）
    - 人物背景（重要经历、与事件的关联、社会关系）
    - 性格特征（MBTI类型、核心性格、情绪表达方式）
@@ -711,12 +725,6 @@ class OasisProfileGenerator:
    - 立场观点（对话题的态度、可能被激怒/感动的内容）
    - 独特特征（口头禅、特殊经历、个人爱好）
    - 个人记忆（人设的重要部分，要介绍这个个体与事件的关联，以及这个个体在事件中的已有动作与反应）
-3. age: 年龄数字（必须是整数）
-4. gender: 性别，必须是英文: "male" 或 "female"
-5. mbti: MBTI类型（如INTJ、ENFP等）
-6. country: 国家/地区（按实体所属或场景上下文推断，语言与本回复一致；无法判断时留空字符串）
-7. profession: 职业
-8. interested_topics: 感兴趣话题数组
 9. dimensions: 人设四维度对象（用于结构化展示，需与 persona 内容保持一致），包含四个字符串字段:
    - experience: 事件全景经历——该个体在此事件中的完整行为轨迹与重要经历（150-300字）
    - behavior: 行为模式侧写——经验总结、行事风格、发帖与互动偏好（150-300字）
