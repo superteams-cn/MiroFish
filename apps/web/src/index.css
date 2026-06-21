@@ -111,6 +111,12 @@
 }
 
 @layer utilities {
+  /* 品牌渐变背景（蓝→品红，右下方向）：头像/图标盒/气泡/分段按钮等装饰面统一单点引用，
+     与 Button 的 gradient variant 同源，避免各处手写 from-indigo-500 to-fuchsia-500。
+     色值对齐 Tailwind indigo-500(#6366f1) / fuchsia-500(#d946ef)。 */
+  .bg-brand-gradient {
+    background-image: linear-gradient(to bottom right, #6366f1, #d946ef);
+  }
   /* 品牌渐变文字（蓝→紫→品红） */
   .text-gradient-brand {
     background-image: linear-gradient(

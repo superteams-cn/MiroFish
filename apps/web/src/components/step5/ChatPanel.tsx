@@ -19,7 +19,7 @@ interface Props {
   onSend: (text: string) => void
 }
 
-const GRADIENT = 'bg-gradient-to-br from-indigo-500 to-fuchsia-500'
+const GRADIENT = 'bg-brand-gradient'
 const initial = (name?: string) => (name || '?').charAt(0).toUpperCase()
 
 /**

@@ -45,7 +45,7 @@ export function AuthButton() {
           aria-label={t('auth.account')}
         >
           <Avatar className="h-9 w-9">
-            <AvatarFallback className="bg-gradient-to-br from-indigo-500 to-fuchsia-500 text-sm font-semibold text-white">
+            <AvatarFallback className="bg-brand-gradient text-sm font-semibold text-white">
               {initial}
             </AvatarFallback>
           </Avatar>

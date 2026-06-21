@@ -83,7 +83,7 @@ export function LiveActionItem({ action }: { action: ActionItem }) {
 
   return (
     <Card variant="glass" className="animate-rise-in flex gap-3 p-3.5">
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-fuchsia-500 text-sm font-medium text-white">
+      <div className="bg-brand-gradient flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-medium text-white">
         {name.slice(0, 1)}
       </div>
       <div className="min-w-0 flex-1">

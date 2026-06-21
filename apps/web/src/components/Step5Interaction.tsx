@@ -168,7 +168,7 @@ function SegBtn({
       className={cn(
         'flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-medium transition',
         active
-          ? 'bg-gradient-to-r from-indigo-500 to-fuchsia-500 text-white shadow-sm'
+          ? 'bg-brand-gradient text-white shadow-sm'
           : 'text-muted-foreground hover:text-foreground',
       )}
     >
@@ -198,7 +198,7 @@ function PeoplePicker({
             onClick={() => onPick(idx)}
             className="bg-card flex items-start gap-3 rounded-2xl border p-4 text-left transition-transform duration-300 hover:-translate-y-0.5"
           >
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-fuchsia-500 text-sm font-medium text-white">
+            <div className="bg-brand-gradient flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-medium text-white">
               {initial(p.name || p.username)}
             </div>
             <div className="min-w-0">

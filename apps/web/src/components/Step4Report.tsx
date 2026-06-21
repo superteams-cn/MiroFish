@@ -1,15 +1,7 @@
 import { useCallback, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import {
-  ArrowRight,
-  Download,
-  RefreshCw,
-  Loader2,
-  CheckCircle2,
-  Sparkles,
-  Code,
-} from 'lucide-react'
+import { ArrowRight, Download, RefreshCw, Sparkles, Code } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { CollapsibleHeader } from '@/components/ui/collapsible-header'
@@ -19,6 +11,8 @@ import { AgentLogTimeline } from '@/components/step4/AgentLogTimeline'
 import { WorkflowProgressPanel } from '@/components/step4/WorkflowProgressPanel'
 import { ConsoleLogView } from '@/components/step4/ConsoleLogView'
 import { useReportGeneration } from '@/components/step4/useReportGeneration'
+import { StageIcon } from '@/components/common/StageIcon'
+import { SoftProgress } from '@/components/common/SoftProgress'
 import { downloadReport, generateReport } from '@/lib/api/report'
 import type { SystemLog } from '@/lib/process-types'
 import type { WorkflowStatus } from '@/components/WorkflowLayout'
@@ -170,13 +164,7 @@ export function Step4Report({
         <div className="mx-auto max-w-3xl">
           {/* 舞台标题 */}
           <div className="animate-rise-in text-center">
-            <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-fuchsia-500 text-white shadow-lg">
-              {isComplete ? (
-                <CheckCircle2 className="h-8 w-8" />
-              ) : (
-                <Loader2 className="h-8 w-8 animate-spin" />
-              )}
-            </div>
+            <StageIcon done={isComplete} />
             <h2 className="text-2xl font-semibold tracking-tight">
               {isComplete ? t('step4.cDone') : t('step4.cWriting')}
             </h2>
@@ -193,12 +181,7 @@ export function Step4Report({
                   {t('step4.cProgress', { done: doneSections, total: totalSections })}
                 </p>
               )}
-              <div className="bg-muted h-1.5 overflow-hidden rounded-full">
-                <div
-                  className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-fuchsia-500 transition-all duration-500"
-                  style={{ width: `${Math.max(softProgress, 3)}%` }}
-                />
-              </div>
+              <SoftProgress value={softProgress} floor={3} />
             </div>
           )}
 

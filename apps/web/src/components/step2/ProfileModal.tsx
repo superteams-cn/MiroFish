@@ -55,7 +55,7 @@ export function ProfileModal({ profile, posts = [], onClose }: Props) {
           <>
             {/* 头部：渐变头像 + 姓名 / @ / 职业 */}
             <DialogHeader className="flex-row items-center gap-4 space-y-0 pr-8">
-              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-fuchsia-500 text-xl font-semibold text-white shadow-lg shadow-indigo-500/25">
+              <div className="bg-brand-gradient flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl text-xl font-semibold text-white shadow-lg shadow-indigo-500/25">
                 {(profile.name || profile.username || '?').slice(0, 1)}
               </div>
               <div className="min-w-0">
@@ -133,7 +133,7 @@ export function ProfileModal({ profile, posts = [], onClose }: Props) {
                           className="rounded-xl border border-indigo-500/15 bg-indigo-500/[0.03] p-3"
                         >
                           <span className="flex items-center gap-1.5 text-xs font-semibold">
-                            <span className="h-1.5 w-1.5 rounded-full bg-gradient-to-br from-indigo-500 to-fuchsia-500" />
+                            <span className="bg-brand-gradient h-1.5 w-1.5 rounded-full" />
                             {t(dim.titleKey)}
                           </span>
                           <p className="text-foreground/75 mt-1.5 whitespace-pre-wrap text-xs leading-relaxed">

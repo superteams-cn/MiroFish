@@ -1,17 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import {
-  Loader2,
-  CheckCircle2,
-  Code,
-  Sparkles,
-  ArrowRight,
-  ArrowLeft,
-  RefreshCw,
-  Compass,
-  Megaphone,
-} from 'lucide-react'
+import { Code, Sparkles, ArrowRight, ArrowLeft, RefreshCw, Compass, Megaphone } from 'lucide-react'
 
 import { SystemLogTerminal } from '@/components/SystemLogTerminal'
 import { StepCard } from '@/components/StepCard'
@@ -21,6 +11,8 @@ import { ProfileModal } from '@/components/step2/ProfileModal'
 import { PersonaBehavior } from '@/components/step2/PersonaBehavior'
 import { RoundsControl } from '@/components/step2/RoundsControl'
 import { useStep2Orchestration } from '@/components/step2/useStep2Orchestration'
+import { StageIcon } from '@/components/common/StageIcon'
+import { SoftProgress } from '@/components/common/SoftProgress'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { CollapsibleHeader } from '@/components/ui/collapsible-header'
@@ -127,13 +119,7 @@ export function Step2EnvSetup({
         <div className="mx-auto max-w-2xl">
           {/* 舞台标题 */}
           <div className="animate-rise-in text-center">
-            <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-fuchsia-500 text-white shadow-lg">
-              {done ? (
-                <CheckCircle2 className="h-8 w-8" />
-              ) : (
-                <Loader2 className="h-8 w-8 animate-spin" />
-              )}
-            </div>
+            <StageIcon done={done} />
             <h2 className="text-2xl font-semibold tracking-tight">
               {done ? t('step2.cGathered') : t('step2.cGathering')}
             </h2>
@@ -150,12 +136,7 @@ export function Step2EnvSetup({
               <p className="text-muted-foreground mb-2 text-center text-sm">
                 {t('step2.cGatheredCount', { count: profiles.length, total: expectedTotal ?? '?' })}
               </p>
-              <div className="bg-muted h-1.5 overflow-hidden rounded-full">
-                <div
-                  className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-fuchsia-500 transition-all duration-500"
-                  style={{ width: `${Math.max(prepareProgress, 5)}%` }}
-                />
-              </div>
+              <SoftProgress value={prepareProgress} floor={5} />
             </div>
           )}
 
@@ -239,7 +220,7 @@ export function Step2EnvSetup({
                         className="glass animate-rise-in flex w-full flex-col rounded-2xl p-4 text-left transition-transform duration-300 hover:-translate-y-0.5"
                       >
                         <div className="flex items-center gap-3">
-                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-fuchsia-500 text-sm font-medium text-white">
+                          <div className="bg-brand-gradient flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-medium text-white">
                             {(p.name || p.username || '?').slice(0, 1)}
                           </div>
                           <div className="min-w-0 flex-1">
@@ -265,12 +246,9 @@ export function Step2EnvSetup({
                         {!!topics.length && (
                           <div className="mt-2 flex flex-wrap gap-1.5">
                             {topics.slice(0, 3).map((topic) => (
-                              <span
-                                key={topic}
-                                className="bg-secondary rounded-full px-2 py-0.5 text-[10px]"
-                              >
+                              <SoftBadge key={topic} className="px-2 text-[10px]">
                                 {topic}
-                              </span>
+                              </SoftBadge>
                             ))}
                             {topics.length > 3 && (
                               <span className="text-muted-foreground px-1 text-[10px]">

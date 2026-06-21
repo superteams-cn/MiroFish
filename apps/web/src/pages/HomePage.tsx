@@ -64,7 +64,7 @@ function TypingBubble() {
 function UserBubble({ children }: { children: ReactNode }) {
   return (
     <div className="animate-rise-in flex justify-end">
-      <div className="max-w-[82%] rounded-3xl rounded-tr-lg bg-gradient-to-br from-indigo-500 to-fuchsia-500 px-5 py-3.5 text-sm leading-relaxed text-white shadow-lg shadow-indigo-500/25 sm:text-base">
+      <div className="bg-brand-gradient max-w-[82%] rounded-3xl rounded-tr-lg px-5 py-3.5 text-sm leading-relaxed text-white shadow-lg shadow-indigo-500/25 sm:text-base">
         {children}
       </div>
     </div>

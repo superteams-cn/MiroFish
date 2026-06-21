@@ -1,10 +1,12 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { Loader2, CheckCircle2, RefreshCw, Code, Sparkles, ArrowRight } from 'lucide-react'
+import { Loader2, RefreshCw, Code, Sparkles, ArrowRight } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { SystemLogTerminal } from '@/components/SystemLogTerminal'
+import { StageIcon } from '@/components/common/StageIcon'
+import { SoftProgress } from '@/components/common/SoftProgress'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { CollapsibleHeader } from '@/components/ui/collapsible-header'
@@ -169,26 +171,13 @@ export function Step1GraphBuild({
           <div className="mx-auto max-w-lg">
             {/* 舞台主体 */}
             <div className="animate-rise-in text-center">
-              <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-fuchsia-500 text-white shadow-lg">
-                {done ? (
-                  <CheckCircle2 className="h-8 w-8" />
-                ) : (
-                  <Loader2 className="h-8 w-8 animate-spin" />
-                )}
-              </div>
+              <StageIcon done={done} />
               <h2 className="text-2xl font-semibold tracking-tight">{title}</h2>
               <p className="text-muted-foreground mt-2">{sub}</p>
             </div>
 
             {/* 构建中的软进度 */}
-            {building && (
-              <div className="bg-muted mt-6 h-1.5 overflow-hidden rounded-full">
-                <div
-                  className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-fuchsia-500 transition-all duration-500"
-                  style={{ width: `${Math.max(progress, 5)}%` }}
-                />
-              </div>
-            )}
+            {building && <SoftProgress value={progress} floor={5} className="mt-6" />}
 
             {/* 发现的角色 / 关系（hover 看说明） */}
             {(roles.length > 0 || rels.length > 0) && (

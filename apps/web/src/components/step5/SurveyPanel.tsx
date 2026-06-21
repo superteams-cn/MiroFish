@@ -71,9 +71,7 @@ export function SurveyPanel({
                 <div
                   className={cn(
                     'flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold',
-                    on
-                      ? 'bg-gradient-to-br from-indigo-500 to-fuchsia-500 text-white'
-                      : 'bg-muted text-muted-foreground',
+                    on ? 'bg-brand-gradient text-white' : 'bg-muted text-muted-foreground',
                   )}
                 >
                   {initial(p.name || p.username)}
@@ -119,7 +117,7 @@ export function SurveyPanel({
           {results.map((r) => (
             <div key={r.agent_id} className="bg-card rounded-2xl border p-4">
               <div className="mb-2 flex items-center gap-2.5">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-fuchsia-500 text-[11px] font-semibold text-white">
+                <div className="bg-brand-gradient flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold text-white">
                   {initial(r.agent_name)}
                 </div>
                 <div className="min-w-0">

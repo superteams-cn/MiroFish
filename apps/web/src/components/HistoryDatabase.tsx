@@ -176,7 +176,7 @@ export function HistoryDatabase({ onHasProjects }: HistoryDatabaseProps = {}) {
   return (
     <section id="history-section" ref={sectionRef} className="mt-12 scroll-mt-6">
       <div className="mb-5 flex items-center gap-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-fuchsia-500 text-white shadow-md">
+        <div className="bg-brand-gradient flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white shadow-md">
           <History className="h-5 w-5" />
         </div>
         <div>

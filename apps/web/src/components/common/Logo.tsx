@@ -22,7 +22,7 @@ export function Logo({ variant = 'full', className }: LogoProps) {
       return (
         <div
           className={cn(
-            'flex items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-fuchsia-500 text-white',
+            'bg-brand-gradient flex items-center justify-center rounded-full text-white',
             className,
           )}
         >
