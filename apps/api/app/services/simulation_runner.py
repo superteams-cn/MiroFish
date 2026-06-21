@@ -14,7 +14,7 @@ import threading
 import time
 from datetime import datetime
 from queue import Queue
-from typing import Any
+from typing import Any, ClassVar
 
 from ..core.errors import AppError
 from ..core.logger import get_logger
@@ -24,6 +24,7 @@ from ..utils.locale import get_locale, set_locale
 from .graph_memory_updater import GraphMemoryManager
 from .simulation import interview_service, log_reader
 from .simulation import process_control as pc
+from .simulation.runtime_store import RunnerRuntimeStore
 from .simulation_ipc import CommandType, SimulationIPCClient
 
 logger = get_logger("superfish.simulation_runner")
@@ -61,16 +62,9 @@ class SimulationRunner:
     # 脚本目录
     SCRIPTS_DIR = os.path.join(os.path.dirname(__file__), "../../scripts")
 
-    # 内存中的运行状态
-    _run_states: dict[str, SimulationRunState] = {}
-    _processes: dict[str, subprocess.Popen] = {}
-    _action_queues: dict[str, Queue] = {}
-    _monitor_threads: dict[str, threading.Thread] = {}
-    _stdout_files: dict[str, Any] = {}  # 存储 stdout 文件句柄
-    _stderr_files: dict[str, Any] = {}  # 存储 stderr 文件句柄
-
-    # 图谱记忆更新配置
-    _graph_memory_enabled: dict[str, bool] = {}  # simulation_id -> enabled
+    # 进程内运行时状态（单一容器，进程内单例；语义同原 7 个静态类 dict）。
+    # 设计为可被 MonitorThread/Reconciler 等注入，是后续把它们抽成独立类的前提。
+    _store: ClassVar[RunnerRuntimeStore] = RunnerRuntimeStore()
 
     # ===== 无状态可恢复（档位 A）相关 =====
     # 本进程实例唯一标识（hostname:pid），用于监控所有权归属
@@ -144,7 +138,7 @@ class SimulationRunner:
         用于判定内存缓存 `_run_states` 是否可信：仅 owner（拉起或接管者）的缓存是实时的，
         非 owner（如 API 入队后）的缓存是过期快照，必须改读 DB。
         """
-        return simulation_id in cls._monitor_threads or simulation_id in cls._processes
+        return simulation_id in cls._store.monitor_threads or simulation_id in cls._store.processes
 
     @classmethod
     def get_run_state(cls, simulation_id: str) -> SimulationRunState | None:
@@ -161,7 +155,7 @@ class SimulationRunner:
         终态回写 completed/interrupted，消除「进程已退出但快照仍 running」的脏状态。
         """
         if cls._owns_locally(simulation_id):
-            return cls._run_states[simulation_id]
+            return cls._store.run_states[simulation_id]
         state = cls._load_run_state(simulation_id)
         if state is None:
             return None
@@ -277,7 +271,7 @@ class SimulationRunner:
         for sid in simulation_ids:
             # 仅信任本进程确实在监控的内存态；非 owner 缓存可能过期，改读 DB（见 get_run_state）
             if cls._owns_locally(sid):
-                result[sid] = cls._run_states[sid]
+                result[sid] = cls._store.run_states[sid]
             else:
                 to_load.append(sid)
 
@@ -306,7 +300,7 @@ class SimulationRunner:
     def _save_run_state(cls, state: SimulationRunState):
         """保存运行状态到 Postgres（upsert，委托 RunStateRepository）并更新本进程实时缓存。"""
         RunStateRepository.save_raw(state.simulation_id, state.to_detail_dict())
-        cls._run_states[state.simulation_id] = state
+        cls._store.run_states[state.simulation_id] = state
 
     @classmethod
     def _materialize_sim_dir(cls, simulation_id: str) -> str:
@@ -441,15 +435,15 @@ class SimulationRunner:
 
             try:
                 GraphMemoryManager.create_updater(simulation_id, graph_id)
-                cls._graph_memory_enabled[simulation_id] = True
+                cls._store.graph_memory_enabled[simulation_id] = True
                 logger.info(
                     f"已启用图谱记忆更新: simulation_id={simulation_id}, graph_id={graph_id}"
                 )
             except Exception as e:
                 logger.error(f"创建图谱记忆更新器失败: {e}")
-                cls._graph_memory_enabled[simulation_id] = False
+                cls._store.graph_memory_enabled[simulation_id] = False
         else:
-            cls._graph_memory_enabled[simulation_id] = False
+            cls._store.graph_memory_enabled[simulation_id] = False
 
         # 确定运行哪个脚本（脚本位于 backend/scripts/ 目录）
         if platform == "twitter":
@@ -470,7 +464,7 @@ class SimulationRunner:
 
         # 创建动作队列
         action_queue = Queue()
-        cls._action_queues[simulation_id] = action_queue
+        cls._store.action_queues[simulation_id] = action_queue
 
         # 启动模拟进程
         try:
@@ -516,8 +510,8 @@ class SimulationRunner:
             )
 
             # 保存文件句柄以便后续关闭
-            cls._stdout_files[simulation_id] = main_log_file
-            cls._stderr_files[simulation_id] = None  # 不再需要单独的 stderr
+            cls._store.stdout_files[simulation_id] = main_log_file
+            cls._store.stderr_files[simulation_id] = None  # 不再需要单独的 stderr
 
             state.process_pid = process.pid
             state.process_start_time = cls._read_process_start_time(process.pid)
@@ -527,7 +521,7 @@ class SimulationRunner:
             state.graph_memory_enabled = bool(enable_graph_memory_update)
             state.owner_id = cls._inst_id()
             state.owner_heartbeat = time.time()
-            cls._processes[simulation_id] = process
+            cls._store.processes[simulation_id] = process
             cls._save_run_state(state)
 
             # Capture locale before spawning monitor thread
@@ -538,7 +532,7 @@ class SimulationRunner:
                 target=cls._monitor_simulation, args=(simulation_id, current_locale), daemon=True
             )
             monitor_thread.start()
-            cls._monitor_threads[simulation_id] = monitor_thread
+            cls._store.monitor_threads[simulation_id] = monitor_thread
 
             logger.info(f"模拟启动成功: {simulation_id}, pid={process.pid}, platform={platform}")
 
@@ -568,8 +562,8 @@ class SimulationRunner:
         twitter_actions_log = os.path.join(sim_dir, "twitter", "actions.jsonl")
         reddit_actions_log = os.path.join(sim_dir, "reddit", "actions.jsonl")
 
-        process = cls._processes.get(simulation_id)  # 孤儿接管时为 None
-        state = cls._run_states.get(simulation_id) or cls._load_run_state(simulation_id)
+        process = cls._store.processes.get(simulation_id)  # 孤儿接管时为 None
+        state = cls._store.run_states.get(simulation_id) or cls._load_run_state(simulation_id)
 
         if not state:
             return
@@ -674,32 +668,32 @@ class SimulationRunner:
 
         finally:
             # 停止图谱记忆更新器
-            if cls._graph_memory_enabled.get(simulation_id, False):
+            if cls._store.graph_memory_enabled.get(simulation_id, False):
                 try:
                     GraphMemoryManager.stop_updater(simulation_id)
                     logger.info(f"已停止图谱记忆更新: simulation_id={simulation_id}")
                 except Exception as e:
                     logger.error(f"停止图谱记忆更新器失败: {e}")
-                cls._graph_memory_enabled.pop(simulation_id, None)
+                cls._store.graph_memory_enabled.pop(simulation_id, None)
 
             # 清理进程资源（本进程不再监控此模拟）
-            cls._processes.pop(simulation_id, None)
-            cls._action_queues.pop(simulation_id, None)
-            cls._monitor_threads.pop(simulation_id, None)
+            cls._store.processes.pop(simulation_id, None)
+            cls._store.action_queues.pop(simulation_id, None)
+            cls._store.monitor_threads.pop(simulation_id, None)
 
             # 关闭日志文件句柄
-            if simulation_id in cls._stdout_files:
+            if simulation_id in cls._store.stdout_files:
                 try:
-                    cls._stdout_files[simulation_id].close()
+                    cls._store.stdout_files[simulation_id].close()
                 except Exception:
                     pass
-                cls._stdout_files.pop(simulation_id, None)
-            if simulation_id in cls._stderr_files and cls._stderr_files[simulation_id]:
+                cls._store.stdout_files.pop(simulation_id, None)
+            if simulation_id in cls._store.stderr_files and cls._store.stderr_files[simulation_id]:
                 try:
-                    cls._stderr_files[simulation_id].close()
+                    cls._store.stderr_files[simulation_id].close()
                 except Exception:
                     pass
-                cls._stderr_files.pop(simulation_id, None)
+                cls._store.stderr_files.pop(simulation_id, None)
 
     @classmethod
     def _read_action_log(
@@ -718,7 +712,7 @@ class SimulationRunner:
             新的读取位置
         """
         # 检查是否启用了图谱记忆更新
-        graph_memory_enabled = cls._graph_memory_enabled.get(state.simulation_id, False)
+        graph_memory_enabled = cls._store.graph_memory_enabled.get(state.simulation_id, False)
         graph_updater = None
         if graph_memory_enabled:
             graph_updater = GraphMemoryManager.get_updater(state.simulation_id)
@@ -884,11 +878,11 @@ class SimulationRunner:
                 # worker 自行监控 —— 但绝不在此把存活的远端模拟误判为已死。
                 if (
                     local_alive
-                    and sid not in cls._monitor_threads
+                    and sid not in cls._store.monitor_threads
                     and cls._try_claim_ownership(sid)
                 ):
-                    cls._run_states[sid] = state
-                    cls._graph_memory_enabled[sid] = bool(state.graph_memory_enabled)
+                    cls._store.run_states[sid] = state
+                    cls._store.graph_memory_enabled[sid] = bool(state.graph_memory_enabled)
                     if state.graph_memory_enabled and state.graph_id:
                         try:
                             GraphMemoryManager.create_updater(sid, state.graph_id)
@@ -898,7 +892,7 @@ class SimulationRunner:
                         target=cls._monitor_simulation, args=(sid, locale), daemon=True
                     )
                     th.start()
-                    cls._monitor_threads[sid] = th
+                    cls._store.monitor_threads[sid] = th
                     adopted.append(sid)
                     logger.info(f"已接管运行中的模拟: {sid}, pid={state.process_pid}")
                 continue
@@ -1004,7 +998,7 @@ class SimulationRunner:
         cls._save_run_state(state)
 
         # 终止进程
-        process = cls._processes.get(simulation_id)
+        process = cls._store.processes.get(simulation_id)
         if process and process.poll() is None:
             # 本进程亲自启动的：用 Popen 句柄终止进程组
             try:
@@ -1050,13 +1044,13 @@ class SimulationRunner:
         cls._upload_run_artifacts(simulation_id, os.path.join(cls.RUN_STATE_DIR, simulation_id))
 
         # 停止图谱记忆更新器
-        if cls._graph_memory_enabled.get(simulation_id, False):
+        if cls._store.graph_memory_enabled.get(simulation_id, False):
             try:
                 GraphMemoryManager.stop_updater(simulation_id)
                 logger.info(f"已停止图谱记忆更新: simulation_id={simulation_id}")
             except Exception as e:
                 logger.error(f"停止图谱记忆更新器失败: {e}")
-            cls._graph_memory_enabled.pop(simulation_id, None)
+            cls._store.graph_memory_enabled.pop(simulation_id, None)
 
         logger.info(f"模拟已停止: {simulation_id}")
         return state
@@ -1193,8 +1187,8 @@ class SimulationRunner:
                         errors.append(f"删除 {dir_name}/actions.jsonl 失败: {str(e)}")
 
         # 清理内存中的运行状态
-        if simulation_id in cls._run_states:
-            del cls._run_states[simulation_id]
+        if simulation_id in cls._store.run_states:
+            del cls._store.run_states[simulation_id]
 
         # 清理 Postgres 中的运行状态快照
         try:
@@ -1223,13 +1217,17 @@ class SimulationRunner:
         cls._detached = True
         cls._detaching = True
 
-        if not cls._processes and not cls._monitor_threads and not cls._graph_memory_enabled:
+        if (
+            not cls._store.processes
+            and not cls._store.monitor_threads
+            and not cls._store.graph_memory_enabled
+        ):
             return  # 本进程没在监控任何模拟，静默返回
 
         logger.info("正在松手退出（保留运行中的模拟子进程，待下次启动接管）...")
 
         # 释放本进程持有的监控所有权，便于新进程立即接管
-        for sim_id in list(cls._monitor_threads.keys()):
+        for sim_id in list(cls._store.monitor_threads.keys()):
             try:
                 cls._release_ownership(sim_id)
             except Exception:
@@ -1240,22 +1238,22 @@ class SimulationRunner:
             GraphMemoryManager.stop_all()
         except Exception as e:
             logger.error(f"停止图谱记忆更新器失败: {e}")
-        cls._graph_memory_enabled.clear()
+        cls._store.graph_memory_enabled.clear()
 
         # 关闭文件句柄
-        for file_handle in list(cls._stdout_files.values()):
+        for file_handle in list(cls._store.stdout_files.values()):
             try:
                 if file_handle:
                     file_handle.close()
             except Exception:
                 pass
-        cls._stdout_files.clear()
-        cls._stderr_files.clear()
+        cls._store.stdout_files.clear()
+        cls._store.stderr_files.clear()
 
         # 丢弃本进程的句柄/引用，但**不终止子进程**
-        cls._processes.clear()
-        cls._monitor_threads.clear()
-        cls._action_queues.clear()
+        cls._store.processes.clear()
+        cls._store.monitor_threads.clear()
+        cls._store.action_queues.clear()
 
         logger.info("已松手退出")
 
@@ -1267,7 +1265,7 @@ class SimulationRunner:
         **不再注册到进程退出钩子**（退出走 detach「松手」）。
         """
         # 收集所有运行中的模拟：本进程内存中的 + PG 标记 running/starting 的
-        ids = set(cls._processes.keys())
+        ids = set(cls._store.processes.keys())
         try:
             for sid, data in RunStateRepository.load_all_raw().items():
                 if (data or {}).get("runner_status") in ("running", "starting"):
@@ -1308,7 +1306,7 @@ class SimulationRunner:
 
         def detach_handler(signum=None, frame=None):
             """信号处理器：松手后调用原处理器，让服务正常退出。"""
-            if cls._processes or cls._monitor_threads:
+            if cls._store.processes or cls._store.monitor_threads:
                 logger.info(f"收到信号 {signum}，松手退出（保留子进程）...")
             cls.detach_all_simulations()
 
@@ -1343,7 +1341,7 @@ class SimulationRunner:
         获取所有正在运行的模拟ID列表
         """
         running = []
-        for sim_id, process in cls._processes.items():
+        for sim_id, process in cls._store.processes.items():
             if process.poll() is None:
                 running.append(sim_id)
         return running

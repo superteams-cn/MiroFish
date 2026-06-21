@@ -34,8 +34,8 @@ def runner_cleanup():
             RunStateRepository.delete(sid)
         except Exception:
             pass
-        SimulationRunner._run_states.pop(sid, None)
-        SimulationRunner._graph_memory_enabled.pop(sid, None)
+        SimulationRunner._store.run_states.pop(sid, None)
+        SimulationRunner._store.graph_memory_enabled.pop(sid, None)
 
 
 def _new_sid(created: list[str]) -> str:
@@ -136,7 +136,7 @@ def test_run_state_persistence_roundtrip(runner_cleanup):
     SimulationRunner._save_run_state(state)
 
     # 清掉进程内缓存，强制走 DB 重建路径
-    SimulationRunner._run_states.pop(sid, None)
+    SimulationRunner._store.run_states.pop(sid, None)
     loaded = SimulationRunner._load_run_state(sid)
     assert loaded is not None
     assert loaded.simulation_id == sid
@@ -164,11 +164,11 @@ def test_get_run_state_serves_inmemory_only_when_owner(runner_cleanup):
     assert got.runner_status == RunnerStatus.STOPPED
 
     # owner（有监控线程登记）：信任内存实时对象，原样返回
-    SimulationRunner._monitor_threads[sid] = object()  # type: ignore[assignment]
+    SimulationRunner._store.monitor_threads[sid] = object()  # type: ignore[assignment]
     try:
         assert SimulationRunner.get_run_state(sid) is state
     finally:
-        SimulationRunner._monitor_threads.pop(sid, None)
+        SimulationRunner._store.monitor_threads.pop(sid, None)
 
 
 # ───────────────────────── 监控所有权 CAS ─────────────────────────
@@ -222,7 +222,7 @@ def test_reconcile_state_dead_running_to_interrupted(runner_cleanup, tmp_path, m
         simulation_id=sid, runner_status=RunnerStatus.RUNNING, process_pid=999999
     )
     SimulationRunner._save_run_state(state)
-    SimulationRunner._run_states.pop(sid, None)
+    SimulationRunner._store.run_states.pop(sid, None)
 
     reconciled = SimulationRunner._reconcile_state(SimulationRunner._load_run_state(sid))
     # 进程已死、无 simulation_end → INTERRUPTED
@@ -245,7 +245,7 @@ def test_reconcile_state_dead_with_simulation_end_to_completed(
         simulation_id=sid, runner_status=RunnerStatus.RUNNING, process_pid=999999
     )
     SimulationRunner._save_run_state(state)
-    SimulationRunner._run_states.pop(sid, None)
+    SimulationRunner._store.run_states.pop(sid, None)
 
     reconciled = SimulationRunner._reconcile_state(SimulationRunner._load_run_state(sid))
     assert reconciled.runner_status == RunnerStatus.COMPLETED
@@ -260,7 +260,7 @@ def test_reconcile_running_simulations_finalizes_dead(runner_cleanup, tmp_path, 
             simulation_id=sid, runner_status=RunnerStatus.RUNNING, process_pid=999999
         )
     )
-    SimulationRunner._run_states.pop(sid, None)
+    SimulationRunner._store.run_states.pop(sid, None)
 
     result = SimulationRunner.reconcile_running_simulations()
     assert sid in result["finalized"]
@@ -339,7 +339,7 @@ def test_reconcile_starting_no_pid_within_grace_stays_starting(
             started_at=datetime.now().isoformat(),
         )
     )
-    SimulationRunner._run_states.pop(sid, None)
+    SimulationRunner._store.run_states.pop(sid, None)
     reconciled = SimulationRunner._reconcile_state(SimulationRunner._load_run_state(sid))
     assert reconciled.runner_status == RunnerStatus.STARTING
 
@@ -358,7 +358,7 @@ def test_reconcile_starting_no_pid_past_grace_fails(runner_cleanup, tmp_path, mo
             started_at=datetime.now().isoformat(),
         )
     )
-    SimulationRunner._run_states.pop(sid, None)
+    SimulationRunner._store.run_states.pop(sid, None)
     reconciled = SimulationRunner._reconcile_state(SimulationRunner._load_run_state(sid))
     assert reconciled.runner_status == RunnerStatus.FAILED
     assert reconciled.error
@@ -390,7 +390,7 @@ def test_reconcile_state_env_alive_keeps_running_despite_dead_local_pid(
             simulation_id=sid, runner_status=RunnerStatus.RUNNING, process_pid=999999
         )
     )
-    SimulationRunner._run_states.pop(sid, None)
+    SimulationRunner._store.run_states.pop(sid, None)
 
     reconciled = SimulationRunner._reconcile_state(SimulationRunner._load_run_state(sid))
     assert reconciled.runner_status == RunnerStatus.RUNNING  # 心跳在 → 保持运行
@@ -410,7 +410,7 @@ def test_reconcile_state_fresh_owner_keeps_running_during_active_rounds(
     state.owner_id = "worker-host:7"
     state.owner_heartbeat = time.time()  # 监控线程刚刷新
     SimulationRunner._save_run_state(state)
-    SimulationRunner._run_states.pop(sid, None)
+    SimulationRunner._store.run_states.pop(sid, None)
 
     reconciled = SimulationRunner._reconcile_state(SimulationRunner._load_run_state(sid))
     assert reconciled.runner_status == RunnerStatus.RUNNING
@@ -426,7 +426,7 @@ def test_reconcile_running_skips_remote_alive_sim(runner_cleanup, tmp_path, monk
             simulation_id=sid, runner_status=RunnerStatus.RUNNING, process_pid=999999
         )
     )
-    SimulationRunner._run_states.pop(sid, None)
+    SimulationRunner._store.run_states.pop(sid, None)
 
     result = SimulationRunner.reconcile_running_simulations(reset_detach=False)
     assert sid not in result["finalized"]
@@ -447,7 +447,7 @@ def test_reconcile_running_finalizes_when_no_heartbeat_no_owner(
             simulation_id=sid, runner_status=RunnerStatus.RUNNING, process_pid=999999
         )
     )
-    SimulationRunner._run_states.pop(sid, None)
+    SimulationRunner._store.run_states.pop(sid, None)
 
     result = SimulationRunner.reconcile_running_simulations(reset_detach=False)
     assert sid in result["finalized"]
@@ -465,7 +465,7 @@ def test_reconcile_running_skips_when_owner_fresh(runner_cleanup, tmp_path, monk
     state.owner_id = "other-worker:42"
     state.owner_heartbeat = time.time()  # 新鲜
     SimulationRunner._save_run_state(state)
-    SimulationRunner._run_states.pop(sid, None)
+    SimulationRunner._store.run_states.pop(sid, None)
 
     result = SimulationRunner.reconcile_running_simulations(reset_detach=False)
     assert sid not in result["finalized"]
@@ -894,7 +894,7 @@ def test_stop_simulation_not_running_raises_409(runner_cleanup, tmp_path, monkey
     SimulationRunner._save_run_state(
         SimulationRunState(simulation_id=sid, runner_status=RunnerStatus.COMPLETED)
     )
-    SimulationRunner._run_states.pop(sid, None)
+    SimulationRunner._store.run_states.pop(sid, None)
     with pytest.raises(AppError) as exc:
         SimulationRunner.stop_simulation(sid)
     assert exc.value.status == 409
@@ -1037,16 +1037,16 @@ def test_spawn_process_assembles_command_and_env_and_runs(runner_cleanup, tmp_pa
         assert kwargs["cwd"] == str(tmp_path / sid)
     finally:
         # 清理本用例在内存里登记的句柄，避免污染其它用例
-        SimulationRunner._processes.pop(sid, None)
-        SimulationRunner._monitor_threads.pop(sid, None)
-        SimulationRunner._action_queues.pop(sid, None)
-        sf = SimulationRunner._stdout_files.pop(sid, None)
+        SimulationRunner._store.processes.pop(sid, None)
+        SimulationRunner._store.monitor_threads.pop(sid, None)
+        SimulationRunner._store.action_queues.pop(sid, None)
+        sf = SimulationRunner._store.stdout_files.pop(sid, None)
         if sf:
             try:
                 sf.close()
             except Exception:
                 pass
-        SimulationRunner._stderr_files.pop(sid, None)
+        SimulationRunner._store.stderr_files.pop(sid, None)
 
 
 def test_spawn_process_graph_memory_requires_graph_id(runner_cleanup, tmp_path, monkeypatch):
