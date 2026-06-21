@@ -4,11 +4,11 @@ FastAPI 公共依赖项
 
 from fastapi import Depends, Header, HTTPException
 
+from ..db_models import UserRow
+from ..utils.locale import coerce_locale, set_locale, t
 from .db import session_scope
-from .db_models import UserRow
+from .security import decode_token
 from .settings import settings
-from .utils.locale import coerce_locale, set_locale, t
-from .utils.security import decode_token
 
 
 async def use_locale(accept_language: str | None = Header(default=None)):

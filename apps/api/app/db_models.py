@@ -10,8 +10,8 @@ from sqlalchemy import DateTime, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
-from .db import Base
-from .settings import settings
+from .core.db import Base
+from .core.settings import settings
 
 
 class UserRow(Base):

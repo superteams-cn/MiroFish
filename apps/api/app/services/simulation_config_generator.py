@@ -19,9 +19,9 @@ from typing import Any
 
 from openai import OpenAI
 
-from ..settings import settings
+from ..core.logger import get_logger
+from ..core.settings import settings
 from ..utils.locale import get_language_instruction, t
-from ..utils.logger import get_logger
 from .neo4j_entity_reader import EntityNode
 
 logger = get_logger("superfish.simulation_config")

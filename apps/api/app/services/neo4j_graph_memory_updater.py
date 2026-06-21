@@ -11,8 +11,8 @@ from datetime import UTC, datetime
 from queue import Empty, Queue
 from typing import Any
 
+from ..core.logger import get_logger
 from ..utils.locale import get_locale, set_locale
-from ..utils.logger import get_logger
 from ..utils.neo4j_graph_utils import get_neo4j_graph_client
 
 logger = get_logger("superfish.neo4j_graph_memory_updater")

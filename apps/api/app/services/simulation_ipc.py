@@ -17,7 +17,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
-from ..utils.logger import get_logger
+from ..core.logger import get_logger
 
 logger = get_logger("superfish.simulation_ipc")
 

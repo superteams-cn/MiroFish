@@ -8,7 +8,7 @@ import re
 import zlib
 from typing import Any
 
-from ..settings import settings
+from ..core.settings import settings
 from ..utils.llm_client import LLMClient
 from ..utils.locale import get_language_instruction, get_locale
 

@@ -17,9 +17,9 @@ from typing import Any
 
 from openai import OpenAI
 
-from ..settings import settings
+from ..core.logger import get_logger
+from ..core.settings import settings
 from ..utils.locale import get_language_instruction, get_locale, set_locale, t
-from ..utils.logger import get_logger
 from ..utils.neo4j_graph_utils import fetch_all_edges, fetch_all_nodes, get_neo4j_graph_client
 from .neo4j_entity_reader import EntityNode
 

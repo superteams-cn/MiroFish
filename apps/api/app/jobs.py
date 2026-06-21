@@ -8,11 +8,11 @@
 
 import traceback
 
+from .core.logger import get_logger
+from .core.settings import settings
 from .models.project import ProjectManager, ProjectStatus
 from .models.task import TaskManager, TaskStatus
-from .settings import settings
 from .utils.locale import set_locale, t
-from .utils.logger import get_logger
 
 logger = get_logger("superfish.jobs")
 

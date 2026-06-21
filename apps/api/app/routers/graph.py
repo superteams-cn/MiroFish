@@ -9,9 +9,11 @@ import os
 import traceback
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile
-from fastapi.responses import JSONResponse
 
-from ..deps import get_current_user, require_verified_user, use_locale
+from ..core.deps import get_current_user, require_verified_user, use_locale
+from ..core.errors import error_response as _error  # 统一错误信封
+from ..core.logger import get_logger
+from ..core.settings import settings
 from ..jobqueue import enqueue
 from ..models.project import ProjectManager, ProjectStatus
 from ..models.task import TaskManager
@@ -19,23 +21,14 @@ from ..schemas.graph import BuildGraphRequest
 from ..services.graph_builder import GraphBuilderService
 from ..services.ontology_generator import OntologyGenerator
 from ..services.text_processor import TextProcessor
-from ..settings import settings
 from ..utils.file_parser import FileParser
 from ..utils.locale import get_locale, t
-from ..utils.logger import get_logger
 
 # 整个图谱路由：解析语言 + 强制登录（具体的 graph_id/project_id 归属在各处理器内校验）
 router = APIRouter(dependencies=[Depends(use_locale), Depends(get_current_user)])
 
 # 获取日志器
 logger = get_logger("superfish.api")
-
-
-def _error(message: str, status: int, **extra) -> JSONResponse:
-    """构造错误响应，保持统一信封。"""
-    body = {"success": False, "error": message}
-    body.update(extra)
-    return JSONResponse(status_code=status, content=body)
 
 
 def allowed_file(filename: str) -> bool:
@@ -138,9 +131,7 @@ async def generate_ontology(
 
         # 配额：单用户项目总数上限
         if ProjectManager.count_projects(current["user_id"]) >= settings.max_projects_per_user:
-            return _error(
-                t("auth.projectQuotaExceeded", limit=settings.max_projects_per_user), 403
-            )
+            return _error(t("auth.projectQuotaExceeded", limit=settings.max_projects_per_user), 403)
 
         # 创建项目（盖章当前用户为属主）
         project = ProjectManager.create_project(name=project_name, user_id=current["user_id"])

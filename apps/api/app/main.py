@@ -16,11 +16,11 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from .core.logger import setup_logger
 from .routers import auth as auth_router
 from .routers import graph as graph_router
 from .routers import report as report_router
 from .routers import simulation as simulation_router
-from .utils.logger import setup_logger
 
 
 def _init_with_retry(logger, name, fn, attempts=10, delay=3.0):
@@ -46,7 +46,7 @@ async def lifespan(app: FastAPI):
     logger.info("=" * 50)
 
     # 初始化持久化后端：Postgres 建表 + 对象存储桶（带重试，等待中间件就绪）
-    from .db import init_db
+    from .core.db import init_db
     from .utils import object_store
 
     _init_with_retry(logger, "Postgres", init_db)
@@ -83,6 +83,11 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # 全局异常处理器：统一业务错误信封 + 422→400 映射
+    from .core.errors import register_exception_handlers
+
+    register_exception_handlers(app)
 
     # 健康检查
     @app.get("/health")

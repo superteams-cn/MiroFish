@@ -10,8 +10,8 @@ import asyncio
 from arq.connections import RedisSettings
 
 from . import jobs
-from .settings import settings
-from .utils.logger import get_logger, setup_logger
+from .core.logger import get_logger, setup_logger
+from .core.settings import settings
 
 logger = get_logger("superfish.worker")
 
@@ -31,7 +31,7 @@ async def report_generate_job(ctx, **kwargs) -> None:
 async def startup(ctx) -> None:
     setup_logger("superfish")
     logger.info("worker 启动：初始化数据库与对象存储")
-    from .db import init_db
+    from .core.db import init_db
     from .utils import object_store
 
     try:

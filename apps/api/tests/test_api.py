@@ -12,8 +12,11 @@ from app.main import app
 
 
 @pytest.fixture(scope="module")
-def client() -> TestClient:
-    return TestClient(app)
+def client(auth_headers) -> TestClient:
+    """已登录的测试客户端：业务路由均要求鉴权，默认带上 access token 头。"""
+    c = TestClient(app)
+    c.headers.update(auth_headers)
+    return c
 
 
 def test_health(client: TestClient):
@@ -83,4 +86,4 @@ def test_openapi_route_counts(client: TestClient):
     sim = [p for p in paths if p.startswith("/api/simulation")]
     assert len(graph) == 10
     assert len(report) == 17
-    assert len(sim) == 32
+    assert len(sim) == 35

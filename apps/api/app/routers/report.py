@@ -13,9 +13,11 @@ import uuid
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse
 
-from ..deps import get_current_user, use_locale
+from ..core.deps import get_current_user, use_locale
+from ..core.errors import error_response as _error  # 统一错误信封
+from ..core.logger import get_logger
 from ..jobqueue import enqueue
 from ..models.project import ProjectManager
 from ..models.task import TaskManager
@@ -29,7 +31,6 @@ from ..schemas.report import (
 from ..services.report_agent import Report, ReportAgent, ReportManager, ReportStatus
 from ..services.simulation_manager import SimulationManager
 from ..utils.locale import get_locale, t
-from ..utils.logger import get_logger
 
 
 def _enforce_report_ownership(request: Request, current=Depends(get_current_user)):
@@ -61,13 +62,6 @@ def _owns_simulation(simulation_id: str, current: dict) -> bool:
     """body 传入 simulation_id 时的归属校验。"""
     st = SimulationManager().get_simulation(simulation_id)
     return bool(st) and st.user_id == current["user_id"]
-
-
-def _error(message: str, status: int, **extra) -> JSONResponse:
-    """构造错误响应，保持统一信封。"""
-    body = {"success": False, "error": message}
-    body.update(extra)
-    return JSONResponse(status_code=status, content=body)
 
 
 # ============== 报告生成接口 ==============

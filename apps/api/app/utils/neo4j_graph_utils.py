@@ -17,7 +17,7 @@ from typing import Any
 
 from neo4j import GraphDatabase
 
-from .logger import get_logger
+from ..core.logger import get_logger
 
 logger = get_logger("superfish.graph_utils")
 
@@ -103,7 +103,7 @@ class Neo4jGraphClient:
     """Small synchronous Neo4j client with the subset used by SuperFish."""
 
     def __init__(self):
-        from ..settings import settings
+        from ..core.settings import settings
 
         self.driver = GraphDatabase.driver(
             settings.neo4j_uri,

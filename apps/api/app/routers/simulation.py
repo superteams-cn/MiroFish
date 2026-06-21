@@ -17,9 +17,12 @@ import traceback
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 
-from ..deps import get_current_admin, get_current_user, require_verified_user, use_locale
+from ..core.deps import get_current_admin, get_current_user, require_verified_user, use_locale
+from ..core.errors import error_response as _error  # 统一错误信封
+from ..core.logger import get_logger
+from ..core.settings import settings
 from ..models.project import ProjectManager
 from ..schemas.simulation import (
     CloseEnvRequest,
@@ -39,9 +42,7 @@ from ..services.neo4j_entity_reader import Neo4jEntityReader
 from ..services.oasis_profile_generator import OasisProfileGenerator
 from ..services.simulation_manager import SimulationManager, SimulationStatus
 from ..services.simulation_runner import SimulationRunner
-from ..settings import settings
 from ..utils.locale import get_locale, set_locale, t
-from ..utils.logger import get_logger
 
 
 # 整个模拟路由统一在请求开始时解析语言
@@ -62,13 +63,6 @@ def _enforce_sim_ownership(request: Request, current=Depends(get_current_user)):
 router = APIRouter(dependencies=[Depends(use_locale), Depends(_enforce_sim_ownership)])
 
 logger = get_logger("superfish.api.simulation")
-
-
-def _error(message: str, status: int, **extra) -> JSONResponse:
-    """构造错误响应，保持统一信封。"""
-    body = {"success": False, "error": message}
-    body.update(extra)
-    return JSONResponse(status_code=status, content=body)
 
 
 def _owned_simulation(simulation_id: str, current: dict):
@@ -638,9 +632,7 @@ def list_simulations(project_id: str | None = None, current=Depends(get_current_
     """
     try:
         manager = SimulationManager()
-        simulations = manager.list_simulations(
-            project_id=project_id, user_id=current["user_id"]
-        )
+        simulations = manager.list_simulations(project_id=project_id, user_id=current["user_id"])
 
         return {
             "success": True,
@@ -685,7 +677,9 @@ def get_simulation_history(limit: int = 20, current=Depends(get_current_user)):
 
         enriched_simulations = []
         for sim in simulations:
-            sim_dict = sim.to_dict()  # 已含 simulation_requirement/total_simulation_hours/minutes_per_round
+            sim_dict = (
+                sim.to_dict()
+            )  # 已含 simulation_requirement/total_simulation_hours/minutes_per_round
 
             # 推荐轮数（后备值）由冗余的时间配置算出
             recommended_rounds = int(

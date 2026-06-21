@@ -14,9 +14,9 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from ..core.logger import get_logger
 from ..utils.llm_client import LLMClient
 from ..utils.locale import get_locale, t
-from ..utils.logger import get_logger
 from ..utils.neo4j_graph_utils import (
     fetch_all_edges,
     fetch_all_nodes,

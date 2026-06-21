@@ -14,8 +14,8 @@ import time
 
 import redis
 
-from ..settings import settings
-from .logger import get_logger
+from ..core.logger import get_logger
+from ..core.settings import settings
 
 logger = get_logger("superfish.rate_limit")
 

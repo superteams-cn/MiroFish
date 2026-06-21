@@ -15,7 +15,7 @@ import time
 
 import jwt
 
-from ..settings import settings
+from .settings import settings
 
 _PBKDF2_ALGO = "pbkdf2_sha256"
 _PBKDF2_ITER = 600_000

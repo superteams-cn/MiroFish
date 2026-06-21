@@ -14,8 +14,8 @@ import smtplib
 import threading
 from email.message import EmailMessage
 
-from ..settings import settings
-from .logger import get_logger
+from ..core.logger import get_logger
+from ..core.settings import settings
 
 logger = get_logger("superfish.mailer")
 

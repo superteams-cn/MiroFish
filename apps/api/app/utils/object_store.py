@@ -12,8 +12,8 @@ import boto3
 from botocore.client import Config as BotoConfig
 from botocore.exceptions import ClientError
 
-from ..settings import settings
-from .logger import get_logger
+from ..core.logger import get_logger
+from ..core.settings import settings
 
 logger = get_logger("superfish.object_store")
 

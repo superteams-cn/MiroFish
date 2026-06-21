@@ -10,11 +10,23 @@ import uuid
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import JSONResponse
 
-from ..db import session_scope
+from ..core.db import session_scope
+from ..core.deps import get_current_user, use_locale
+from ..core.errors import error_response as _error  # 统一错误信封
+from ..core.logger import get_logger
+from ..core.security import (
+    create_access_token,
+    create_refresh_token,
+    create_reset_token,
+    create_verify_token,
+    decode_token,
+    hash_password,
+    password_fingerprint,
+    verify_password,
+)
+from ..core.settings import settings
 from ..db_models import UserRow
-from ..deps import get_current_user, use_locale
 from ..schemas.auth import (
     ForgotPasswordRequest,
     LoginCodeRequest,
@@ -27,21 +39,9 @@ from ..schemas.auth import (
     VerifyCodeRequest,
     VerifyEmailRequest,
 )
-from ..settings import settings
 from ..utils.locale import t
-from ..utils.logger import get_logger
 from ..utils.mailer import send_email_async
 from ..utils.rate_limit import check_rate_limit, client_ip
-from ..utils.security import (
-    create_access_token,
-    create_refresh_token,
-    create_reset_token,
-    create_verify_token,
-    decode_token,
-    hash_password,
-    password_fingerprint,
-    verify_password,
-)
 from ..utils.verify_code import (
     TTL_EMAIL_VERIFY,
     generate_code,
@@ -55,10 +55,6 @@ router = APIRouter(dependencies=[Depends(use_locale)])
 
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 _MIN_PASSWORD_LEN = 8
-
-
-def _error(message: str, status: int) -> JSONResponse:
-    return JSONResponse(status_code=status, content={"success": False, "error": message})
 
 
 def _public_user(user: UserRow) -> dict:
@@ -204,9 +200,7 @@ def login(req: LoginRequest, request: Request):
     ip = client_ip(request)
     if not check_rate_limit(
         f"auth:login:ip:{ip}", settings.rate_limit_login_per_min, 60
-    ) or not check_rate_limit(
-        f"auth:login:email:{email}", settings.rate_limit_login_per_min, 60
-    ):
+    ) or not check_rate_limit(f"auth:login:email:{email}", settings.rate_limit_login_per_min, 60):
         return _error(t("auth.rateLimited"), 429)
 
     with session_scope() as session:

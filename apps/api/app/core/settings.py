@@ -10,9 +10,12 @@ from pathlib import Path
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# apps/api/app/ 目录；上溯三级定位仓库根的 .env
-_APP_DIR = Path(__file__).resolve().parent
-_REPO_ROOT = _APP_DIR.parents[2]
+# 本文件位于 apps/api/app/core/settings.py。
+# _API_DIR=apps/api（uploads 等运行期目录的基准），_REPO_ROOT=仓库根（.env 所在）。
+_CORE_DIR = Path(__file__).resolve().parent  # apps/api/app/core
+_APP_DIR = _CORE_DIR.parent  # apps/api/app（保留语义：app 目录）
+_API_DIR = _CORE_DIR.parents[1]  # apps/api
+_REPO_ROOT = _CORE_DIR.parents[3]  # 仓库根（SuperFish）
 
 
 class Settings(BaseSettings):

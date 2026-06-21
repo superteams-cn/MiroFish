@@ -18,10 +18,10 @@ from enum import StrEnum
 from queue import Queue
 from typing import Any
 
-from ..db import session_scope
+from ..core.db import session_scope
+from ..core.logger import get_logger
 from ..db_models import SimulationRunStateRow
 from ..utils.locale import get_locale, set_locale
-from ..utils.logger import get_logger
 from .neo4j_graph_memory_updater import Neo4jGraphMemoryManager
 from .simulation_ipc import SimulationIPCClient
 

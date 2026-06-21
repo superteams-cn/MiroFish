@@ -7,7 +7,7 @@ import json
 from dataclasses import dataclass, field
 from typing import Any
 
-from ..utils.logger import get_logger
+from ..core.logger import get_logger
 from ..utils.neo4j_graph_utils import fetch_all_edges, fetch_all_nodes, get_neo4j_graph_client
 
 logger = get_logger("superfish.neo4j_entity_reader")

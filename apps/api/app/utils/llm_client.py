@@ -9,7 +9,7 @@ from typing import Any
 
 from openai import OpenAI
 
-from ..settings import settings
+from ..core.settings import settings
 
 
 class LLMClient:

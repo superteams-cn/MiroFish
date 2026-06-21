@@ -21,11 +21,11 @@ from llama_index.core.schema import TextNode
 from llama_index.llms.openai_like import OpenAILike
 from pydantic import PrivateAttr
 
+from ..core.logger import get_logger
+from ..core.settings import settings
 from ..models.task import TaskManager, TaskStatus
-from ..settings import settings
 from ..utils.llm_client import LLMClient
 from ..utils.locale import get_locale, set_locale, t
-from ..utils.logger import get_logger
 from ..utils.neo4j_graph_utils import (
     delete_group,
     fetch_all_edges,

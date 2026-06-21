@@ -14,9 +14,9 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
-from ..db import session_scope
+from ..core.db import session_scope
+from ..core.settings import settings
 from ..db_models import ProjectRow
-from ..settings import settings
 from ..utils import object_store
 
 
@@ -222,11 +222,7 @@ class ProjectManager:
         if not project_ids:
             return {}
         with session_scope() as session:
-            rows = (
-                session.query(ProjectRow)
-                .filter(ProjectRow.project_id.in_(project_ids))
-                .all()
-            )
+            rows = session.query(ProjectRow).filter(ProjectRow.project_id.in_(project_ids)).all()
             return {r.project_id: _row_to_project(r) for r in rows}
 
     @classmethod

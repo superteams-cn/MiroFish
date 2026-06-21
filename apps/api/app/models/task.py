@@ -14,7 +14,7 @@ from typing import Any
 
 from sqlalchemy import delete
 
-from ..db import session_scope
+from ..core.db import session_scope
 from ..db_models import TaskRow
 from ..utils.locale import t
 

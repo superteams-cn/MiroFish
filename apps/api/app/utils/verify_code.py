@@ -10,7 +10,7 @@
 
 import secrets
 
-from .logger import get_logger
+from ..core.logger import get_logger
 from .rate_limit import get_redis
 
 logger = get_logger("superfish.verify_code")
