@@ -76,7 +76,11 @@ class LLMClient:
     """LLM客户端（OpenAI 兼容）。"""
 
     def __init__(
-        self, api_key: str | None = None, base_url: str | None = None, model: str | None = None
+        self,
+        api_key: str | None = None,
+        base_url: str | None = None,
+        model: str | None = None,
+        max_retries: int | None = None,
     ):
         self.api_key = api_key or settings.llm_api_key
         self.base_url = base_url or settings.llm_base_url
@@ -85,11 +89,16 @@ class LLMClient:
         if not self.api_key:
             raise ValueError("LLM_API_KEY 未配置")
 
-        self.client = OpenAI(
-            api_key=self.api_key,
-            base_url=self.base_url,
-            timeout=settings.llm_request_timeout,
-        )
+        # max_retries=0 可关闭 SDK 内置重试（长文本生成场景下，避免内部重试×大超时
+        # 叠加把一次挂死的调用拖成数百秒，连累整批任务）。None 时用 SDK 默认。
+        kwargs: dict[str, Any] = {
+            "api_key": self.api_key,
+            "base_url": self.base_url,
+            "timeout": settings.llm_request_timeout,
+        }
+        if max_retries is not None:
+            kwargs["max_retries"] = max_retries
+        self.client = OpenAI(**kwargs)
 
     def _create(
         self,
