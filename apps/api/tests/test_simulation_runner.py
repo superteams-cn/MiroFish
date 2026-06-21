@@ -199,3 +199,104 @@ def test_reconcile_running_simulations_finalizes_dead(runner_cleanup, tmp_path, 
     result = SimulationRunner.reconcile_running_simulations()
     assert sid in result["finalized"]
     assert SimulationRunner._load_run_state(sid).runner_status == RunnerStatus.INTERRUPTED
+
+
+# ───── 提交2：模拟入队 / 计算面拆出 API（_init_run_state + 启动宽限 + 队列注册）─────
+
+
+def _write_config(tmp_path, sid, *, hours=10, minutes_per_round=30):
+    """写一份最小 simulation_config.json，供 _init_run_state 读取轮数。"""
+    import json
+
+    sim_dir = tmp_path / sid
+    sim_dir.mkdir(parents=True, exist_ok=True)
+    (sim_dir / "simulation_config.json").write_text(
+        json.dumps(
+            {"time_config": {"total_simulation_hours": hours, "minutes_per_round": minutes_per_round}}
+        ),
+        encoding="utf-8",
+    )
+    return sim_dir
+
+
+def test_init_run_state_creates_starting_without_process(runner_cleanup, tmp_path, monkeypatch):
+    monkeypatch.setattr(SimulationRunner, "RUN_STATE_DIR", str(tmp_path))
+    sid = _new_sid(runner_cleanup)
+    _write_config(tmp_path, sid, hours=10, minutes_per_round=30)
+
+    state = SimulationRunner._init_run_state(sid, platform="reddit")
+
+    # STARTING、无 PID（进程交由 worker 拉起）、平台标记正确、轮数据配置算出
+    assert state.runner_status == RunnerStatus.STARTING
+    assert state.process_pid is None
+    assert state.reddit_running is True
+    assert state.twitter_running is False
+    assert state.total_rounds == 20  # 10h * 60 / 30min
+    # 已持久化，重载可见
+    assert SimulationRunner._load_run_state(sid).runner_status == RunnerStatus.STARTING
+
+
+def test_init_run_state_rejects_when_already_running(runner_cleanup, tmp_path, monkeypatch):
+    monkeypatch.setattr(SimulationRunner, "RUN_STATE_DIR", str(tmp_path))
+    sid = _new_sid(runner_cleanup)
+    _write_config(tmp_path, sid)
+    # 伪造一个「运行中」快照（带活 PID = 本进程）
+    SimulationRunner._save_run_state(
+        SimulationRunState(
+            simulation_id=sid, runner_status=RunnerStatus.RUNNING, process_pid=os.getpid()
+        )
+    )
+    with pytest.raises(ValueError):
+        SimulationRunner._init_run_state(sid, platform="reddit")
+
+
+def test_reconcile_starting_no_pid_within_grace_stays_starting(
+    runner_cleanup, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(SimulationRunner, "RUN_STATE_DIR", str(tmp_path))
+    sid = _new_sid(runner_cleanup)
+    from datetime import datetime
+
+    # STARTING、无 PID、刚入队（started_at=now）→ 宽限期内不应被判失败
+    SimulationRunner._save_run_state(
+        SimulationRunState(
+            simulation_id=sid,
+            runner_status=RunnerStatus.STARTING,
+            process_pid=None,
+            started_at=datetime.now().isoformat(),
+        )
+    )
+    SimulationRunner._run_states.pop(sid, None)
+    reconciled = SimulationRunner._reconcile_state(SimulationRunner._load_run_state(sid))
+    assert reconciled.runner_status == RunnerStatus.STARTING
+
+
+def test_reconcile_starting_no_pid_past_grace_fails(runner_cleanup, tmp_path, monkeypatch):
+    monkeypatch.setattr(SimulationRunner, "RUN_STATE_DIR", str(tmp_path))
+    monkeypatch.setattr(SimulationRunner, "LAUNCH_GRACE", 0.0)  # 立即超期
+    sid = _new_sid(runner_cleanup)
+    from datetime import datetime
+
+    SimulationRunner._save_run_state(
+        SimulationRunState(
+            simulation_id=sid,
+            runner_status=RunnerStatus.STARTING,
+            process_pid=None,
+            started_at=datetime.now().isoformat(),
+        )
+    )
+    SimulationRunner._run_states.pop(sid, None)
+    reconciled = SimulationRunner._reconcile_state(SimulationRunner._load_run_state(sid))
+    assert reconciled.runner_status == RunnerStatus.FAILED
+    assert reconciled.error
+
+
+def test_jobqueue_registers_simulation_run():
+    """模拟拉起作业已注册到队列分发表，且映射到 worker 协程与同步业务函数。"""
+    from app import jobqueue, jobs
+
+    entry = jobqueue._JOBS.get("simulation_run")
+    assert entry is not None
+    arq_func_name, sync_fn = entry
+    assert arq_func_name == "simulation_run_job"
+    assert sync_fn is jobs.run_simulation_launch

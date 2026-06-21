@@ -3,6 +3,7 @@
 拆分自 routers/simulation.py。共享件见 _shared.py。
 """
 
+from ...jobqueue import enqueue  # noqa: E402
 from ._shared import (  # noqa: F401  (统一从共享件导入，未用项由 ruff 裁剪)
     INTERVIEW_PROMPT_PREFIX,
     APIRouter,
@@ -166,16 +167,28 @@ def start_simulation(req: StartSimulationRequest, current=Depends(require_verifi
 
             logger.info(f"启用图谱记忆更新: simulation_id={simulation_id}, graph_id={graph_id}")
 
-        # 启动模拟
-        run_state = SimulationRunner.start_simulation(
+        # 初始化 STARTING 运行态（快速、可立即返回前端），实际拉起子进程入队给 worker。
+        # 控制面（stop/interview/IPC）走 Redis 总线，故子进程可由独立 worker 持有、横向扩展。
+        # 队列不可用时回退本地线程执行（等价早期 API 进程内 Popen 的单机行为）。
+        run_state = SimulationRunner._init_run_state(
             simulation_id=simulation_id,
             platform=platform,
             max_rounds=max_rounds,
             enable_graph_memory_update=enable_graph_memory_update,
             graph_id=graph_id,
         )
+        job_id = enqueue(
+            "simulation_run",
+            simulation_id=simulation_id,
+            platform=platform,
+            max_rounds=max_rounds,
+            enable_graph_memory_update=enable_graph_memory_update,
+            graph_id=graph_id,
+            locale=get_locale(),
+        )
+        logger.info(f"模拟拉起已入队: simulation_id={simulation_id}, job_id={job_id}")
 
-        # 更新模拟状态
+        # 更新模拟状态（乐观置 RUNNING，供配额/列表语义；worker 失败时回写 FAILED）
         state.status = SimulationStatus.RUNNING
         manager._save_simulation_state(state)
 

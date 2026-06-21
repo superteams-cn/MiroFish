@@ -28,6 +28,11 @@ async def report_generate_job(ctx, **kwargs) -> None:
     await asyncio.to_thread(jobs.run_report_generate, **kwargs)
 
 
+async def simulation_run_job(ctx, **kwargs) -> None:
+    # 拉起子进程 + 启动监控线程后即返回（监控线程为 worker 进程的 daemon，持续存活）
+    await asyncio.to_thread(jobs.run_simulation_launch, **kwargs)
+
+
 async def startup(ctx) -> None:
     setup_logger("superfish")
     logger.info("worker 启动：初始化数据库与对象存储")
@@ -52,7 +57,7 @@ async def shutdown(ctx) -> None:
 class WorkerSettings:
     """arq worker 配置。"""
 
-    functions = [graph_build_job, report_generate_job]
+    functions = [graph_build_job, report_generate_job, simulation_run_job]
     redis_settings = _redis_settings()
     on_startup = startup
     on_shutdown = shutdown
