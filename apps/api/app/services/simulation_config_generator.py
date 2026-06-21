@@ -17,10 +17,9 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from typing import Any
 
-from openai import OpenAI
-
 from ..core.logger import get_logger
 from ..core.settings import settings
+from ..utils.llm_client import LLMClient
 from ..utils.locale import get_language_instruction, t
 from .neo4j_entity_reader import EntityNode
 
@@ -238,12 +237,8 @@ class SimulationConfigGenerator:
         if not self.api_key:
             raise ValueError("LLM_API_KEY 未配置")
 
-        # 设置请求超时，避免单次 LLM 调用挂死把 prepare 流程卡住
-        self.client = OpenAI(
-            api_key=self.api_key,
-            base_url=self.base_url,
-            timeout=settings.llm_request_timeout,
-        )
+        # 统一走可复用的 LLMClient（健壮 JSON 解析 / 截断修复 / 重试由其承载）
+        self.llm = LLMClient(api_key=self.api_key, base_url=self.base_url, model=self.model_name)
 
     def generate_config(
         self,
@@ -447,105 +442,29 @@ class SimulationConfigGenerator:
         return "\n".join(lines)
 
     def _call_llm_with_retry(self, prompt: str, system_prompt: str) -> dict[str, Any]:
-        """带重试的LLM调用，包含JSON修复逻辑"""
+        """带温度衰减重试的 LLM JSON 调用。
 
-        max_attempts = 3
-        last_error = None
-
-        for attempt in range(max_attempts):
+        markdown 去栅栏 / 截断闭合 / 控制字符清洗等修复已统一由 LLMClient 承载，
+        本方法只负责「拼消息 + 温度衰减重试 + 退避」。
+        """
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": prompt},
+        ]
+        last_error: Exception | None = None
+        for attempt in range(3):
             try:
-                response = self.client.chat.completions.create(
-                    model=self.model_name,
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": prompt},
-                    ],
-                    response_format={"type": "json_object"},
-                    temperature=0.7 - (attempt * 0.1),  # 每次重试降低温度
-                    # 不设置max_tokens，让LLM自由发挥
+                # 大 max_tokens 避免长配置被截断；健壮解析兜底；每次重试降温
+                return self.llm.chat_json(
+                    messages, temperature=0.7 - attempt * 0.1, max_tokens=16384
                 )
-
-                content = response.choices[0].message.content
-                finish_reason = response.choices[0].finish_reason
-
-                # 检查是否被截断
-                if finish_reason == "length":
-                    logger.warning(f"LLM输出被截断 (attempt {attempt + 1})")
-                    content = self._fix_truncated_json(content)
-
-                # 尝试解析JSON
-                try:
-                    return json.loads(content)
-                except json.JSONDecodeError as e:
-                    logger.warning(f"JSON解析失败 (attempt {attempt + 1}): {str(e)[:80]}")
-
-                    # 尝试修复JSON
-                    fixed = self._try_fix_config_json(content)
-                    if fixed:
-                        return fixed
-
-                    last_error = e
-
             except Exception as e:
-                logger.warning(f"LLM调用失败 (attempt {attempt + 1}): {str(e)[:80]}")
+                logger.warning(f"LLM 配置生成失败 (attempt {attempt + 1}): {str(e)[:80]}")
                 last_error = e
                 import time
 
                 time.sleep(2 * (attempt + 1))
-
         raise last_error or Exception("LLM调用失败")
-
-    def _fix_truncated_json(self, content: str) -> str:
-        """修复被截断的JSON"""
-        content = content.strip()
-
-        # 计算未闭合的括号
-        open_braces = content.count("{") - content.count("}")
-        open_brackets = content.count("[") - content.count("]")
-
-        # 检查是否有未闭合的字符串
-        if content and content[-1] not in '",}]':
-            content += '"'
-
-        # 闭合括号
-        content += "]" * open_brackets
-        content += "}" * open_braces
-
-        return content
-
-    def _try_fix_config_json(self, content: str) -> dict[str, Any] | None:
-        """尝试修复配置JSON"""
-        import re
-
-        # 修复被截断的情况
-        content = self._fix_truncated_json(content)
-
-        # 提取JSON部分
-        json_match = re.search(r"\{[\s\S]*\}", content)
-        if json_match:
-            json_str = json_match.group()
-
-            # 移除字符串中的换行符
-            def fix_string(match):
-                s = match.group(0)
-                s = s.replace("\n", " ").replace("\r", " ")
-                s = re.sub(r"\s+", " ", s)
-                return s
-
-            json_str = re.sub(r'"[^"\\]*(?:\\.[^"\\]*)*"', fix_string, json_str)
-
-            try:
-                return json.loads(json_str)
-            except Exception:
-                # 尝试移除所有控制字符
-                json_str = re.sub(r"[\x00-\x1f\x7f-\x9f]", " ", json_str)
-                json_str = re.sub(r"\s+", " ", json_str)
-                try:
-                    return json.loads(json_str)
-                except Exception:
-                    pass
-
-        return None
 
     def _generate_time_config(self, context: str, num_entities: int) -> dict[str, Any]:
         """生成时间配置"""
