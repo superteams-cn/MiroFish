@@ -37,7 +37,8 @@ export function AuthDialog() {
   const [password, setPassword] = useState('')
   const [displayName, setDisplayName] = useState('')
   const [code, setCode] = useState('')
-  const [loginMethod, setLoginMethod] = useState<LoginMethod>('password')
+  // 默认验证码登录：无账户者凭码自动建号，对新用户零门槛（登录即注册）。
+  const [loginMethod, setLoginMethod] = useState<LoginMethod>('code')
   const [submitting, setSubmitting] = useState(false)
   const [sending, setSending] = useState(false)
   const [cooldown, setCooldown] = useState(0)
@@ -224,6 +225,9 @@ export function AuthDialog() {
                 </button>
               </div>
               <OtpInput value={code} onChange={setCode} focusOnMount={false} />
+              {isLogin && loginMethod === 'code' && (
+                <p className="text-muted-foreground text-xs">{t('auth.codeLoginHint')}</p>
+              )}
             </div>
           )}
 

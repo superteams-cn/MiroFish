@@ -118,8 +118,12 @@ def send_code(req: SendCodeRequest, request: Request):
     user = UserRepository.get_by_email(email)
     exists = user is not None and user.is_active
 
-    should_send = (purpose in ("login", "reset") and exists) or (
-        purpose == "register" and not exists
+    # 登录即注册：login 用途无论邮箱是否已注册都发码（未注册者校验后自动建号）。
+    # reset 仅对已存在账户发、register 仅对未注册邮箱发，仍保留反枚举。
+    should_send = (
+        purpose == "login"
+        or (purpose == "reset" and exists)
+        or (purpose == "register" and not exists)
     )
     if should_send:
         _send_action_code(email, purpose)
@@ -206,7 +210,11 @@ def login(req: LoginRequest, request: Request):
 
 @router.post("/login-code")
 def login_code(req: LoginCodeRequest, request: Request):
-    """验证码登录（无密码）。验证码仅对已存在账户发放，校验通过即签发令牌。"""
+    """验证码登录即注册（无密码）。
+
+    校验通过后：已有账户直接签发令牌；邮箱未注册则凭该验证码自动建号
+    （无密码，email_verified=True，日后可用验证码登录或「忘记密码」设置密码）。
+    """
     email = (req.email or "").strip().lower()
     code = (req.code or "").strip()
     if not _EMAIL_RE.match(email):
@@ -220,9 +228,28 @@ def login_code(req: LoginCodeRequest, request: Request):
         return _error(t("auth.invalidVerifyCode"), 400)
 
     user = UserRepository.get_by_email(email)
+    if user is None:
+        # 登录即注册：验证码已证明邮箱归属，建无密码账户（已验证）
+        now = datetime.now().isoformat()
+        user_id = "user_" + uuid.uuid4().hex[:16]
+        try:
+            user = UserRepository.create(
+                user_id=user_id,
+                email=email,
+                password_hash="",  # 无密码：password 登录恒不通过，需走验证码/重置
+                display_name=email.split("@")[0],
+                email_verified=True,
+                created_at=now,
+                updated_at=now,
+            )
+            logger.info(f"验证码登录即注册(新用户): {email}")
+        except ValueError:
+            # 并发下他人已建（唯一索引兜底）→ 退回读取
+            user = UserRepository.get_by_email(email)
+
     if user is None or not user.is_active:
         return _error(t("auth.invalidCredentials"), 401)
-    # 验证码登录已证明邮箱归属，顺带置为已验证
+    # 验证码登录已证明邮箱归属，顺带置为已验证（兼容历史未验证账户）
     if not user.email_verified:
         UserRepository.mark_verified(user.user_id)
         user.email_verified = True  # 同步快照，使返回的 public 反映已验证

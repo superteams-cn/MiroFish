@@ -82,6 +82,7 @@
     "passwordLogin": "Password",
     "codeLogin": "Email code",
     "submitCodeLogin": "Sign in",
+    "codeLoginHint": "Unregistered emails will get an account automatically",
     "resetByCode": "Reset with code",
     "resetByLink": "Reset via email link"
   },

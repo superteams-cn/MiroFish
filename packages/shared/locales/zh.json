@@ -82,6 +82,7 @@
     "passwordLogin": "密码登录",
     "codeLogin": "验证码登录",
     "submitCodeLogin": "登录",
+    "codeLoginHint": "未注册的邮箱将自动创建账户",
     "resetByCode": "用验证码重置",
     "resetByLink": "用邮件链接重置"
   },
