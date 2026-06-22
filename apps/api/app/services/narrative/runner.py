@@ -218,6 +218,12 @@ class NarrativeRunner:
             except Exception:
                 run_state = {}
 
+        seed = load_seed(sim_dir)
+        characters = (
+            [{"char_id": c.char_id, "name": c.name, "role": c.role} for c in seed.characters]
+            if seed
+            else []
+        )
         status = run_state.get("status", "idle")
         # 线程已死但状态仍 running（如进程重启）→ 视为可续跑的中断态
         if status == "running" and not cls.is_running(simulation_id):
@@ -235,6 +241,7 @@ class NarrativeRunner:
             "progress_percent": round(progress, 1),
             "error": run_state.get("error", ""),
             "branch": load_branch_meta(sim_dir),
+            "characters": characters,
         }
 
     @classmethod

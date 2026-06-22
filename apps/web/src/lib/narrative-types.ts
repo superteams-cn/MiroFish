@@ -29,4 +29,6 @@ export interface NarrativeRunStatus {
   all_beats?: BeatItem[]
   /** 若本推演是某次推演的分支 */
   branch?: { parent_id: string; from_seq: number; injection: string } | null
+  /** 角色清单（供 Step5 采访选人） */
+  characters?: { char_id: string; name: string; role: string }[]
 }

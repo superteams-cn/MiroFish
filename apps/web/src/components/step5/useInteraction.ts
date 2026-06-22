@@ -6,10 +6,13 @@ import {
   streamInterview,
   streamInterviewBatch,
   getSimulationProfilesRealtime,
+  getRunStatus,
+  interviewAgent,
   ensureEnv,
   getEnvStatus,
 } from '@/lib/api/simulation'
 import type { Profile } from '@/lib/step2-types'
+import type { NarrativeRunStatus } from '@/lib/narrative-types'
 import type { ReportOutline } from '@/lib/step4-types'
 import type { ChatMessage, SurveyResult, ToolCall } from '@/lib/step5-types'
 
@@ -17,6 +20,8 @@ interface Options {
   reportId: string
   simulationId: string
   addLog: (msg: string) => void
+  /** 推演类型：narrative 时「问角色」走无环境的叙事采访 */
+  kind?: 'social_opinion' | 'narrative'
 }
 
 type TargetKey = 'report_agent' | `agent_${number}`
@@ -28,8 +33,9 @@ export type Tab = 'super' | 'one' | 'crowd'
  * 追问对象切换。作为「容器 hook」收拢状态与副作用，Step5Interaction 退化为纯展示层。
  * 行为与原内联实现一致。
  */
-export function useInteraction({ reportId, simulationId, addLog }: Options) {
+export function useInteraction({ reportId, simulationId, addLog, kind }: Options) {
   const { t } = useTranslation()
+  const isNarrative = kind === 'narrative'
 
   const [tab, setTab] = useState<Tab>('super')
   const [targetKey, setTargetKey] = useState<TargetKey>('report_agent')
@@ -96,6 +102,19 @@ export function useInteraction({ reportId, simulationId, addLog }: Options) {
   const loadProfiles = useCallback(async () => {
     if (!simulationId) return
     try {
+      // 剧本推演：角色清单来自 run-status（无 OASIS 人设），char_id 放入 username
+      if (isNarrative) {
+        const res = await getRunStatus(simulationId)
+        const data = res.data as unknown as NarrativeRunStatus
+        const chars = (data?.characters || []).map((c) => ({
+          name: c.name,
+          username: c.char_id,
+          profession: c.role,
+        }))
+        setProfiles(chars)
+        addLog(t('log.loadedProfiles', { count: chars.length }))
+        return
+      }
       const res = await getSimulationProfilesRealtime(simulationId, 'reddit')
       if (res.success && res.data) {
         setProfiles(res.data.profiles || [])
@@ -104,7 +123,7 @@ export function useInteraction({ reportId, simulationId, addLog }: Options) {
     } catch (err) {
       addLog(t('log.loadProfilesFailed', { error: (err as Error).message }))
     }
-  }, [addLog, simulationId, t])
+  }, [addLog, isNarrative, simulationId, t])
 
   const loadReport = useCallback(async () => {
     if (!reportId) return
@@ -186,6 +205,24 @@ export function useInteraction({ reportId, simulationId, addLog }: Options) {
         const rawCalls = res.data.tool_calls
         if (Array.isArray(rawCalls) && rawCalls.length > 0) toolCalls = rawCalls as ToolCall[]
         addLog(t('log.reportAgentReplied'))
+      } else if (isNarrative) {
+        // 剧本推演：以角色身份应答，无需 OASIS 环境（非流式）
+        const idx = selectedAgentIndex as number
+        const charId = profiles[idx]?.username || String(idx)
+        addLog(
+          t('log.sendToAgent', {
+            name: selectedAgent?.name || charId,
+            message: text.substring(0, 50),
+          }),
+        )
+        const res = await interviewAgent({
+          simulation_id: simulationId,
+          agent_id: charId,
+          prompt: text,
+        })
+        const reply = res.success && res.data?.response ? res.data.response : t('step5.noResponse')
+        append(key, { role: 'assistant', content: reply, timestamp: new Date().toISOString() })
+        return
       } else {
         const idx = selectedAgentIndex as number
         // 采访前确保环境就绪（必要时唤醒并恢复记忆）；唤醒失败则走人话兜底
@@ -283,6 +320,45 @@ export function useInteraction({ reportId, simulationId, addLog }: Options) {
     setIsSurveying(true)
     addLog(t('log.sendSurvey', { count: selected.size }))
     try {
+      // 剧本推演：逐角色非流式采访，无需环境
+      if (isNarrative) {
+        const q = question.trim()
+        const idxs = Array.from(selected)
+        setSurveyResults(
+          idxs.map((idx) => ({
+            agent_id: idx,
+            agent_name: profiles[idx]?.name || `角色 ${idx}`,
+            profession: profiles[idx]?.profession,
+            question: q,
+            answer: '',
+          })),
+        )
+        await Promise.all(
+          idxs.map(async (idx) => {
+            const charId = profiles[idx]?.username || String(idx)
+            try {
+              const res = await interviewAgent({
+                simulation_id: simulationId,
+                agent_id: charId,
+                prompt: q,
+              })
+              const ans =
+                res.success && res.data?.response ? res.data.response : t('step5.noResponse')
+              setSurveyResults((prev) =>
+                prev.map((r) => (r.agent_id === idx ? { ...r, answer: ans } : r)),
+              )
+            } catch {
+              setSurveyResults((prev) =>
+                prev.map((r) =>
+                  r.agent_id === idx ? { ...r, answer: t('step5.cAgentUnavailable') } : r,
+                ),
+              )
+            }
+          }),
+        )
+        addLog(t('log.receivedReplies', { count: idxs.length }))
+        return
+      }
       // 群访同样需要环境就绪，必要时先唤醒
       const ready = await ensureEnvReady()
       if (!ready) {

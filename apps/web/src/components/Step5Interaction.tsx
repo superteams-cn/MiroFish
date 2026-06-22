@@ -15,12 +15,13 @@ interface Step5Props {
   reportId: string
   simulationId: string
   addLog: (msg: string) => void
+  kind?: 'social_opinion' | 'narrative'
 }
 
 const initial = (name?: string) => (name || 'A').charAt(0).toUpperCase()
 
 /** 步骤五：深入追问（左：结论报告 / 右：问 SuperFish · 问一个人 · 问一群人）。 */
-export function Step5Interaction({ reportId, simulationId, addLog }: Step5Props) {
+export function Step5Interaction({ reportId, simulationId, addLog, kind }: Step5Props) {
   const { t } = useTranslation()
 
   // 全部交互逻辑（加载/唤醒/采访/问卷/切换）收拢在容器 hook 内；本组件仅做展示。
@@ -49,7 +50,7 @@ export function Step5Interaction({ reportId, simulationId, addLog }: Step5Props)
     selectCrowd,
     pickAgent,
     backToPicker,
-  } = useInteraction({ reportId, simulationId, addLog })
+  } = useInteraction({ reportId, simulationId, addLog, kind })
 
   return (
     <div className="flex h-full overflow-hidden">

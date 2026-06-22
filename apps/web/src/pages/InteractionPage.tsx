@@ -15,6 +15,7 @@ export default function InteractionPage() {
   const stepNames = t('main.stepNames', { returnObjects: true }) as string[]
 
   const [simulationId, setSimulationId] = useState('')
+  const [kind, setKind] = useState<'social_opinion' | 'narrative'>('social_opinion')
   const [graphData, setGraphData] = useState<GraphData | null>(null)
   const [graphLoading, setGraphLoading] = useState(false)
   const projectRef = useRef<ProjectData | null>(null)
@@ -43,6 +44,7 @@ export default function InteractionPage() {
         const projRes = await getProject(simRes.data.project_id)
         if (projRes.success && projRes.data) {
           projectRef.current = projRes.data
+          if (projRes.data.kind === 'narrative') setKind('narrative')
           if (projRes.data.graph_id) await loadGraph(projRes.data.graph_id)
         }
       }
@@ -72,7 +74,12 @@ export default function InteractionPage() {
       journeyIds={{ reportId }}
       initialViewMode="workbench"
     >
-      <Step5Interaction reportId={reportId} simulationId={simulationId} addLog={addLog} />
+      <Step5Interaction
+        reportId={reportId}
+        simulationId={simulationId}
+        addLog={addLog}
+        kind={kind}
+      />
     </WorkflowLayout>
   )
 }

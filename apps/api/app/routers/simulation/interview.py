@@ -64,6 +64,16 @@ def interview_agent(req: InterviewAgentRequest, current=Depends(get_current_user
         if platform and platform not in ("twitter", "reddit"):
             return _error(t("api.invalidInterviewPlatform"), 400)
 
+        # 剧本推演：以角色身份应答（无需 OASIS 环境）
+        from ...services.narrative.interview import interview_character
+        from ...services.narrative.runner import is_narrative
+        from ...services.simulation_manager import SimulationManager
+
+        sim_dir = SimulationManager()._get_simulation_dir(simulation_id)
+        if is_narrative(sim_dir):
+            result = interview_character(sim_dir, agent_id, prompt)
+            return {"success": result.get("success", False), "data": result}
+
         # 检查环境状态
         if not SimulationRunner.check_env_alive(simulation_id):
             return _error(t("api.envNotRunning"), 400)

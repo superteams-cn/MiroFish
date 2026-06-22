@@ -110,6 +110,17 @@ export const branchSimulation = (data: {
   label?: string
 }): Promise<ApiEnvelope<BranchResult>> => http.post<BranchResult>('/api/simulation/branch', data)
 
+/** 单个采访（非流式）。剧本推演用它以角色身份应答（无需 OASIS 环境）。 */
+export const interviewAgent = (data: {
+  simulation_id: string
+  agent_id: string | number
+  prompt: string
+}): Promise<ApiEnvelope<{ agent_id?: string; agent_name?: string; response?: string }>> =>
+  http.post<{ agent_id?: string; agent_name?: string; response?: string }>(
+    '/api/simulation/interview',
+    data,
+  )
+
 /** 获取模拟运行实时状态。 */
 export const getRunStatus = (simulationId: string): Promise<ApiEnvelope<RunStatus>> =>
   http.get<RunStatus>(`/api/simulation/${simulationId}/run-status`)
