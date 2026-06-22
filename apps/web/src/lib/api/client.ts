@@ -6,7 +6,9 @@ import { clearTokens, getAccessToken, getRefreshToken, setTokens } from '@/lib/a
 
 // 创建 axios 实例
 const service = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001',
+  // 默认空串 = 相对路径，请求走当前页面同源，由 vite dev proxy / 反代转发到后端。
+  // 这样局域网或其他主机访问时不会错误地打到访问者自己的 localhost。
+  baseURL: import.meta.env.VITE_API_BASE_URL || '',
   timeout: 300000, // 5 分钟超时（本体生成可能需要较长时间）
   headers: {
     'Content-Type': 'application/json',

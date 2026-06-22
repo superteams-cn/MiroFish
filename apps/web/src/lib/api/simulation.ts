@@ -211,7 +211,7 @@ async function consumeSSE(
   onPayload: (p: SSEPayload) => boolean,
   signal?: AbortSignal,
 ): Promise<void> {
-  const base = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001'
+  const base = import.meta.env.VITE_API_BASE_URL || ''
   const token = getAccessToken()
   const resp = await fetch(`${base}${path}`, {
     method: 'POST',
