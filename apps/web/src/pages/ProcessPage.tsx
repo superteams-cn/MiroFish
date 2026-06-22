@@ -280,9 +280,11 @@ export default function ProcessPage() {
         addLog(t('log.ontologyGeneratedForProject', { projectId: res.data.project_id }))
         await startBuildGraph()
       } else {
+        setOntologyProgress(null)
         setError(res.error || t('log.ontologyGenerationFailed'))
       }
     } catch (err) {
+      setOntologyProgress(null)
       setError((err as Error).message)
     }
   }, [addLog, navigate, startBuildGraph, t])
@@ -375,6 +377,7 @@ export default function ProcessPage() {
     >
       <Step1GraphBuild
         currentPhase={currentPhase}
+        error={error}
         projectData={projectData}
         ontologyProgress={ontologyProgress}
         buildProgress={buildProgress}

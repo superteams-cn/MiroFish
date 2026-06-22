@@ -281,6 +281,7 @@
     "rebuildEnvConfirm": "将基于当前图谱重新创建一个全新的模拟环境，已有环境不会被复用。确定继续吗？",
     "cReading": "AI 正在读懂你的世界",
     "cReadingSub": "正在读你给的材料，认识里面的人和事……",
+    "cReadFailed": "没能读懂这份材料",
     "cUnderstanding": "正在理清人物和关系",
     "cUnderstood": "AI 已经读懂了你的世界",
     "cFound": "已经认识了 {nodes} 个人物、理清 {edges} 条关系",

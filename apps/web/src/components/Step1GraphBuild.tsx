@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { Loader2, RefreshCw, Code, Sparkles, ArrowRight } from 'lucide-react'
+import { Loader2, RefreshCw, Code, Sparkles, ArrowRight, AlertTriangle } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { SystemLogTerminal } from '@/components/SystemLogTerminal'
@@ -24,6 +24,8 @@ import type {
 
 interface Step1Props {
   currentPhase: number // -1 上传 / 0 本体 / 1 构建 / 2 完成
+  /** 出错信息：非空时主舞台显示明确错误而非一直转圈 */
+  error?: string | null
   projectData: ProjectData | null
   ontologyProgress: OntologyProgress | null
   buildProgress: BuildProgress | null
@@ -39,6 +41,7 @@ interface Step1Props {
  */
 export function Step1GraphBuild({
   currentPhase,
+  error,
   projectData,
   ontologyProgress,
   buildProgress,
@@ -169,15 +172,30 @@ export function Step1GraphBuild({
       <div className="relative flex h-full flex-col overflow-hidden">
         <div className="flex-1 overflow-y-auto px-5 py-10 sm:px-8">
           <div className="mx-auto max-w-lg">
-            {/* 舞台主体 */}
-            <div className="animate-rise-in text-center">
-              <StageIcon done={done} />
-              <h2 className="text-2xl font-semibold tracking-tight">{title}</h2>
-              <p className="text-muted-foreground mt-2">{sub}</p>
-            </div>
+            {error ? (
+              /* 出错：明确告知而非一直转圈（如项目配额已满 403） */
+              <div className="animate-rise-in text-center">
+                <div className="bg-destructive/10 text-destructive mx-auto flex h-14 w-14 items-center justify-center rounded-full">
+                  <AlertTriangle className="h-7 w-7" />
+                </div>
+                <h2 className="mt-4 text-xl font-semibold tracking-tight">
+                  {t('step1.cReadFailed')}
+                </h2>
+                <p className="text-muted-foreground mt-2 text-sm leading-relaxed">{error}</p>
+              </div>
+            ) : (
+              <>
+                {/* 舞台主体 */}
+                <div className="animate-rise-in text-center">
+                  <StageIcon done={done} />
+                  <h2 className="text-2xl font-semibold tracking-tight">{title}</h2>
+                  <p className="text-muted-foreground mt-2">{sub}</p>
+                </div>
 
-            {/* 构建中的软进度 */}
-            {building && <SoftProgress value={progress} floor={5} className="mt-6" />}
+                {/* 构建中的软进度 */}
+                {building && <SoftProgress value={progress} floor={5} className="mt-6" />}
+              </>
+            )}
 
             {/* 发现的角色 / 关系（hover 看说明） */}
             {(roles.length > 0 || rels.length > 0) && (

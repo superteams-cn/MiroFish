@@ -281,6 +281,7 @@
     "rebuildEnvConfirm": "This will create a brand-new simulation environment from the current graph; the existing one will not be reused. Continue?",
     "cReading": "SuperFish is getting to know your world",
     "cReadingSub": "Reading your material, learning the people and events in it…",
+    "cReadFailed": "Couldn't process this material",
     "cUnderstanding": "Sorting out who's who and how they connect",
     "cUnderstood": "SuperFish now understands your world",
     "cFound": "Met {nodes} people and mapped {edges} connections",

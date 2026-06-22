@@ -118,6 +118,9 @@ export async function requestWithRetry<T>(
     try {
       return await requestFn()
     } catch (error) {
+      // 4xx 是永久性错误（配额满/校验失败/无权限），重试无意义且拖慢报错——直接抛出
+      const status = (error as { response?: { status?: number } })?.response?.status
+      if (typeof status === 'number' && status >= 400 && status < 500) throw error
       if (i === maxRetries - 1) throw error
       console.warn(`Request failed, retrying (${i + 1}/${maxRetries})...`)
       await new Promise((resolve) => setTimeout(resolve, delay * Math.pow(2, i)))
